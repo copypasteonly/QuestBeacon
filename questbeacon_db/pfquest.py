@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,7 @@ class PfQuestSnapshot:
     data: dict[str, Any]
     commits: dict[str, str]
     octo_overwrites_complete: bool
+    base_locale_names: dict[str, dict[Any, Any]] = field(default_factory=dict)
 
 
 def _addon_root(path: Path, marker: str) -> Path:
@@ -103,6 +104,11 @@ def load_pfquest(pfquest_path: Path, octo_path: Path) -> PfQuestSnapshot:
         _execute(lua, path)
 
     pfdb = lua.globals().pfDB
+    lua_table_type = type(lua.table())
+    base_locale_names = {
+        family: _pythonize(pfdb[family]["enUS"], lua_table_type)
+        for family in ("units", "objects")
+    }
     for name in PATCH_DATABASES:
         table = pfdb[name]
         if table["data-turtle"] is None:
@@ -159,10 +165,10 @@ def load_pfquest(pfquest_path: Path, octo_path: Path) -> PfQuestSnapshot:
         """
     )
 
-    lua_table_type = type(lua.table())
     snapshot = _pythonize(pfdb, lua_table_type)
     return PfQuestSnapshot(
         data=snapshot,
         commits={"pfquest": _git_commit(pfquest), "pfquest_octo": _git_commit(octo)},
         octo_overwrites_complete=complete,
+        base_locale_names=base_locale_names,
     )

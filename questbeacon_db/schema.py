@@ -1,9 +1,9 @@
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys=ON;
 PRAGMA application_id=1363298644;
-PRAGMA user_version=1;
+PRAGMA user_version=2;
 
 CREATE TABLE maps (
   id INTEGER PRIMARY KEY,
@@ -36,6 +36,8 @@ CREATE TABLE entities (
   level_min INTEGER,
   level_max INTEGER,
   name_en_us TEXT,
+  data_status TEXT NOT NULL CHECK (data_status IN ('full', 'name_only')),
+  coordinate_count INTEGER NOT NULL CHECK (coordinate_count >= 0),
   PRIMARY KEY (kind, entry_id)
 );
 CREATE TABLE entity_clusters (

@@ -56,6 +56,16 @@ def _title(locale: dict[Any, Any], entry_id: int) -> str | None:
     return None
 
 
+def _authored_coordinate_count(entity: Any) -> int:
+    if not isinstance(entity, dict):
+        return 0
+    return sum(
+        1
+        for coordinate in _values(entity.get("coords", {}))
+        if isinstance(coordinate, dict) and all(key in coordinate for key in (1, 2, 3))
+    )
+
+
 def _coordinate_rows(
     snapshot: PfQuestSnapshot,
     converter: CoordinateConverter,
@@ -219,13 +229,29 @@ def _write_database(
                           int(q.get("class", 0)), int(q.get("sort", 0)) or None, _title(quest_locale, int(qid)))
                          for qid, q in _items(quests) if isinstance(q, dict)))
             entities = []
+            referenced_entities = {
+                (kind, source_id)
+                for _, _, kind, source_id, _ in objective_rows
+                if kind in (ENTITY_KIND["U"], ENTITY_KIND["O"])
+            }
             for kind, family in ((1, "units"), (2, "objects")):
                 locale = data[family].get("enUS", {})
-                for entry_id, entity in _items(data[family].get("data", {})):
+                numeric = data[family].get("data", {})
+                numeric_ids: set[int] = set()
+                for entry_id, entity in _items(numeric):
                     if isinstance(entity, dict):
+                        numeric_ids.add(int(entry_id))
                         low, high = _level_range(entity.get("lvl"))
-                        entities.append((kind, int(entry_id), low, high, _title(locale, int(entry_id))))
-            _insert_all(connection, "entities", ("kind", "entry_id", "level_min", "level_max", "name_en_us"), sorted(entities))
+                        entities.append((kind, int(entry_id), low, high, _title(locale, int(entry_id)),
+                                         "full", _authored_coordinate_count(entity)))
+                for referenced_kind, entry_id in sorted(referenced_entities):
+                    if referenced_kind != kind or entry_id in numeric_ids:
+                        continue
+                    name = _title(locale, entry_id) or _title(snapshot.base_locale_names.get(family, {}), entry_id)
+                    if name is not None:
+                        entities.append((kind, entry_id, None, None, name, "name_only", 0))
+            _insert_all(connection, "entities", ("kind", "entry_id", "level_min", "level_max", "name_en_us",
+                        "data_status", "coordinate_count"), sorted(entities))
             _insert_all(connection, "entity_clusters", ("kind", "entry_id", "cluster_id", "area_id", "mapped_area_id", "map_id",
                         "world_x", "world_y", "map_x", "map_y", "point_count", "radius", "is_noise", "conversion_status"), cluster_rows)
 

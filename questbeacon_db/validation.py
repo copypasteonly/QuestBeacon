@@ -94,15 +94,25 @@ def validate_database(path: Path) -> ValidationResult:
                )"""
         ).fetchone()[0]
         if dangling_objectives:
-            warnings.append(f"{dangling_objectives} objective entity reference(s) are missing")
+            errors.append(f"{dangling_objectives} objective entity reference(s) are missing")
+        lost_authored_coordinates = connection.execute(
+            """SELECT count(*) FROM quest_objective_sources q
+               JOIN entities e ON e.kind=q.source_kind AND e.entry_id=q.source_id
+               WHERE q.source_kind IN (1,2) AND e.coordinate_count > 0 AND NOT EXISTS (
+                 SELECT 1 FROM entity_clusters c WHERE c.kind=q.source_kind AND c.entry_id=q.source_id
+               )"""
+        ).fetchone()[0]
+        if lost_authored_coordinates:
+            errors.append(f"{lost_authored_coordinates} objective source(s) lost authored coordinates")
         objectives_without_locations = connection.execute(
             """SELECT count(*) FROM quest_objective_sources q
-               WHERE q.source_kind IN (1,2) AND NOT EXISTS (
+               JOIN entities e ON e.kind=q.source_kind AND e.entry_id=q.source_id
+               WHERE q.source_kind IN (1,2) AND e.coordinate_count = 0 AND NOT EXISTS (
                  SELECT 1 FROM entity_clusters c WHERE c.kind=q.source_kind AND c.entry_id=q.source_id
                )"""
         ).fetchone()[0]
         if objectives_without_locations:
-            warnings.append(f"{objectives_without_locations} objective source(s) have no cluster")
+            warnings.append(f"{objectives_without_locations} objective source(s) have no authored coordinates")
         out_of_bounds = connection.execute(
             "SELECT count(*) FROM entity_clusters WHERE map_x < 0 OR map_x > 100 OR map_y < 0 OR map_y > 100"
         ).fetchone()[0]
