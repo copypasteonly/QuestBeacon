@@ -51,6 +51,9 @@ function Coordinator:OnEvent(eventName, first, second)
         end
         self:MarkQuestDirty(true)
     elseif eventName == "QUEST_LOG_UPDATE" or eventName == "UNIT_QUEST_LOG_CHANGED" then
+        if QuestBeacon.QuestService and QuestBeacon.QuestService.scanningHeaders then
+            return
+        end
         self:MarkQuestDirty(true)
     elseif eventName == "QUEST_DATA_LOAD_RESULT" then
         if QuestBeacon.QuestService then

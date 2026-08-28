@@ -8,6 +8,14 @@ QuestService.failedRequests = {}
 QuestService.refreshing = false
 QuestService.refreshAgain = false
 QuestService.membershipSignature = nil
+QuestService.scanningHeaders = false
+QuestService.diagnostics = {
+    visibleEntries = 0,
+    expandedEntries = 0,
+    collapsedHeaders = 0,
+    resolvedQuestIDs = 0,
+    expansionError = nil,
+}
 
 local function positiveInteger(value)
     local number = tonumber(value)
@@ -28,7 +36,7 @@ function QuestService:OnQuestLogChanged()
     end
 end
 
-function QuestService:CollectLogEntries()
+function QuestService:ScanVisibleEntries()
     local entries = {}
     local signatureParts = {}
     local entryCount = tonumber(GetNumQuestLogEntries()) or 0
@@ -40,7 +48,98 @@ function QuestService:CollectLogEntries()
             table.insert(signatureParts, tostring(logIndex) .. ":" .. tostring(questID))
         end
     end
-    return entries, table.concat(signatureParts, ",")
+    return entries, table.concat(signatureParts, ","), entryCount
+end
+
+function QuestService:CollectCollapsedHeaders()
+    local collapsed = {}
+    local occurrences = {}
+    local entryCount = tonumber(GetNumQuestLogEntries()) or 0
+    local logIndex
+    for logIndex = 1, entryCount do
+        local title, level, questTag, isHeader, isCollapsed = GetQuestLogTitle(logIndex)
+        if isHeader and title then
+            occurrences[title] = (occurrences[title] or 0) + 1
+            if isCollapsed then
+                local key = title .. "\001" .. tostring(occurrences[title])
+                collapsed[key] = true
+            end
+        end
+    end
+    return collapsed
+end
+
+function QuestService:RestoreCollapsedHeaders(collapsed)
+    local restoreIndexes = {}
+    local occurrences = {}
+    local entryCount = tonumber(GetNumQuestLogEntries()) or 0
+    local logIndex
+    for logIndex = 1, entryCount do
+        local title, level, questTag, isHeader = GetQuestLogTitle(logIndex)
+        if isHeader and title then
+            occurrences[title] = (occurrences[title] or 0) + 1
+            local key = title .. "\001" .. tostring(occurrences[title])
+            if collapsed[key] then
+                table.insert(restoreIndexes, logIndex)
+            end
+        end
+    end
+    local index
+    for index = table.getn(restoreIndexes), 1, -1 do
+        CollapseQuestHeader(restoreIndexes[index])
+    end
+end
+
+function QuestService:CollectLogEntries()
+    local visibleEntries = tonumber(GetNumQuestLogEntries()) or 0
+    local collapsed = self:CollectCollapsedHeaders()
+    local collapsedCount = 0
+    local key
+    for key in pairs(collapsed) do
+        collapsedCount = collapsedCount + 1
+    end
+
+    local entries, signature, expandedEntries
+    local expansionError = nil
+    if collapsedCount > 0 and type(ExpandQuestHeader) == "function" and type(CollapseQuestHeader) == "function" then
+        self.scanningHeaders = true
+        local expandOK, expandResult = pcall(ExpandQuestHeader, 0)
+        local scanOK, scanEntries, scanSignature, scanCount = false, nil, nil, nil
+        if expandOK then
+            scanOK, scanEntries, scanSignature, scanCount = pcall(function()
+                return self:ScanVisibleEntries()
+            end)
+        end
+        local restoreOK, restoreResult = true, nil
+        if expandOK then
+            restoreOK, restoreResult = pcall(function()
+                self:RestoreCollapsedHeaders(collapsed)
+            end)
+        end
+        self.scanningHeaders = false
+        if expandOK and scanOK and restoreOK then
+            entries, signature, expandedEntries = scanEntries, scanSignature, scanCount
+        else
+            if not expandOK then
+                expansionError = "expand: " .. tostring(expandResult)
+            elseif not scanOK then
+                expansionError = "scan: " .. tostring(scanEntries)
+            else
+                expansionError = "restore: " .. tostring(restoreResult)
+            end
+        end
+    end
+    if not entries then
+        entries, signature, expandedEntries = self:ScanVisibleEntries()
+    end
+    self.diagnostics = {
+        visibleEntries = visibleEntries,
+        expandedEntries = expandedEntries,
+        collapsedHeaders = collapsedCount,
+        resolvedQuestIDs = table.getn(entries),
+        expansionError = expansionError,
+    }
+    return entries, signature
 end
 
 function QuestService:BuildObjective(logIndex, objectiveIndex)
@@ -150,6 +249,10 @@ end
 
 function QuestService:GetActiveQuests()
     return self.activeQuests
+end
+
+function QuestService:GetDiagnostics()
+    return self.diagnostics
 end
 
 function QuestService:GetQuest(questID)

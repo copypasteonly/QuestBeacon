@@ -342,6 +342,7 @@ function Navigation:PrintStatus()
     end
     local metadata = QuestBeacon.DB:GetMetadata()
     local activeQuests = QuestBeacon.QuestService:GetActiveQuests()
+    local questDiagnostics = QuestBeacon.QuestService:GetDiagnostics()
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     QuestBeacon:Print("status: ClassicAPI=" .. (ready and "ready" or ("missing (" .. tostring(reason) .. ")")) ..
         " HearthDB=" .. hearthVersion)
@@ -354,6 +355,13 @@ function Navigation:PrintStatus()
     end
     QuestBeacon:Print("active quests=" .. table.getn(activeQuests) ..
         " entity cache=" .. QuestBeacon.DB:GetCacheSize())
+    QuestBeacon:Print("quest log visible=" .. tostring(questDiagnostics.visibleEntries) ..
+        " expanded=" .. tostring(questDiagnostics.expandedEntries) ..
+        " collapsed=" .. tostring(questDiagnostics.collapsedHeaders) ..
+        " ids=" .. tostring(questDiagnostics.resolvedQuestIDs))
+    if questDiagnostics.expansionError then
+        QuestBeacon:Print("quest header scan failed: " .. tostring(questDiagnostics.expansionError))
+    end
     if player.available then
         QuestBeacon:Print(string.format("player x=%.2f y=%.2f area=%d map=%d",
             player.x, player.y, player.areaID, player.mapID))
