@@ -6,4 +6,5 @@
 
 Core.lua
 DB.lua
+PositionService.lua
 Events.lua
