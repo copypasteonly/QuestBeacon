@@ -162,6 +162,12 @@ def build_database(pfquest: Path, octo: Path, dbc: Path, output: Path, report: P
     temporary = Path(temporary_name)
     try:
         stats = _write_database(temporary, snapshot, dbc_data, converter)
+        from questbeacon_db.validation import validate_database
+
+        validation = validate_database(temporary)
+        stats["validation"] = validation.as_dict()
+        if not validation.ok:
+            raise RuntimeError("generated database failed validation: " + "; ".join(validation.errors))
         os.replace(temporary, output)
         stats["database"] = str(output)
     finally:

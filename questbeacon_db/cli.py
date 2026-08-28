@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -32,5 +33,5 @@ def main(argv: Sequence[str] | None = None) -> int:
     from questbeacon_db.validation import validate_database
 
     result = validate_database(args.database)
+    print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
     return 0 if result.ok else 1
-
