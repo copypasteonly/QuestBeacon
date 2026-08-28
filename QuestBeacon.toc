@@ -1,0 +1,8 @@
+## Interface: 11200
+## Title: QuestBeacon
+## Notes: Runtime quest navigation proof for OctoWoW
+## Author: copypasteonly
+## Version: 0.2.0
+
+Core.lua
+Events.lua

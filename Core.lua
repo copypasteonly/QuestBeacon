@@ -1,0 +1,74 @@
+QuestBeacon = QuestBeacon or {}
+
+QuestBeacon.NAME = "QuestBeacon"
+QuestBeacon.VERSION = "0.2.0"
+QuestBeacon.SCHEMA_VERSION = 2
+QuestBeacon.enabled = false
+QuestBeacon.disabledReason = nil
+QuestBeacon.errorPrinted = false
+
+function QuestBeacon:Print(message)
+    if DEFAULT_CHAT_FRAME then
+        DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99QuestBeacon:|r " .. tostring(message))
+    end
+end
+
+function QuestBeacon:Disable(reason)
+    self.enabled = false
+    self.disabledReason = tostring(reason or "unknown error")
+    if not self.errorPrinted then
+        self.errorPrinted = true
+        self:Print("disabled - " .. self.disabledReason)
+    end
+end
+
+function QuestBeacon:CheckDependencies()
+    local missing = {}
+    local function requireFunction(value, name)
+        if type(value) ~= "function" then
+            table.insert(missing, name)
+        end
+    end
+
+    if type(C_QuestLog) ~= "table" then
+        table.insert(missing, "C_QuestLog")
+    else
+        requireFunction(C_QuestLog.GetQuestIDForLogIndex, "C_QuestLog.GetQuestIDForLogIndex")
+        requireFunction(C_QuestLog.RequestLoadQuestByID, "C_QuestLog.RequestLoadQuestByID")
+    end
+    requireFunction(GetQuestLogLeaderBoardID, "GetQuestLogLeaderBoardID")
+
+    if type(C_PlayerInfo) ~= "table" then
+        table.insert(missing, "C_PlayerInfo")
+    else
+        requireFunction(C_PlayerInfo.UnitPosition, "C_PlayerInfo.UnitPosition")
+    end
+    if type(C_Map) ~= "table" then
+        table.insert(missing, "C_Map")
+    else
+        requireFunction(C_Map.GetBestMapForUnit, "C_Map.GetBestMapForUnit")
+    end
+
+    requireFunction(HDB_OpenAddon, "HDB_OpenAddon")
+    requireFunction(HDB_QueryRaw, "HDB_QueryRaw")
+    requireFunction(HDB_Close, "HDB_Close")
+    requireFunction(HDB_GetVersion, "HDB_GetVersion")
+
+    if table.getn(missing) > 0 then
+        return false, "missing dependencies: " .. table.concat(missing, ", ")
+    end
+    return true, nil
+end
+
+function QuestBeacon:Initialize()
+    if self.enabled or self.disabledReason then
+        return self.enabled
+    end
+    local ready, reason = self:CheckDependencies()
+    if not ready then
+        self:Disable(reason)
+        return false
+    end
+    self.enabled = true
+    return true
+end
