@@ -35,7 +35,12 @@ function QuestBeacon:CheckDependencies()
     else
         requireFunction(C_QuestLog.GetQuestIDForLogIndex, "C_QuestLog.GetQuestIDForLogIndex")
         requireFunction(C_QuestLog.RequestLoadQuestByID, "C_QuestLog.RequestLoadQuestByID")
+        requireFunction(C_QuestLog.IsQuestDataCachedByID, "C_QuestLog.IsQuestDataCachedByID")
     end
+    requireFunction(GetNumQuestLogEntries, "GetNumQuestLogEntries")
+    requireFunction(GetQuestLogTitle, "GetQuestLogTitle")
+    requireFunction(GetNumQuestLeaderBoards, "GetNumQuestLeaderBoards")
+    requireFunction(GetQuestLogLeaderBoard, "GetQuestLogLeaderBoard")
     requireFunction(GetQuestLogLeaderBoardID, "GetQuestLogLeaderBoardID")
 
     if type(C_PlayerInfo) ~= "table" then
