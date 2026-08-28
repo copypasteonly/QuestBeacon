@@ -12,17 +12,21 @@ function Coordinator:MarkQuestDirty(logChanged)
 end
 
 function Coordinator:ProcessFrame()
-    if not QuestBeacon.enabled or not self.questDirty then
+    if not QuestBeacon.enabled then
         return
     end
-    self.questDirty = false
-    if QuestBeacon.QuestService then
-        QuestBeacon.QuestService:Refresh()
+    if self.questDirty then
+        self.questDirty = false
+        if QuestBeacon.QuestService then
+            QuestBeacon.QuestService:Refresh()
+        end
+        if QuestBeacon.Navigation and QuestBeacon.PositionService then
+            QuestBeacon.Navigation:AutoResolve(self.initialRefresh)
+        end
+        self.initialRefresh = false
+    elseif QuestBeacon.Navigation then
+        QuestBeacon.Navigation:CheckAreaChange()
     end
-    if QuestBeacon.Navigation and QuestBeacon.PositionService then
-        QuestBeacon.Navigation:AutoResolve(self.initialRefresh)
-    end
-    self.initialRefresh = false
 end
 
 function Coordinator:OnEvent(eventName, first, second)
@@ -51,6 +55,7 @@ function Coordinator:OnEvent(eventName, first, second)
     elseif eventName == "QUEST_DATA_LOAD_RESULT" then
         if QuestBeacon.QuestService then
             QuestBeacon.QuestService:OnQuestDataLoaded(tonumber(first), tonumber(second) == 1)
+            self.questDirty = true
         end
     end
 end

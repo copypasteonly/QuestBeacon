@@ -15,28 +15,34 @@ end
 
 function PositionService:GetPlayerPosition()
     local posY, posX, posZ, mapID = C_PlayerInfo.UnitPosition("player")
+    posY = tonumber(posY)
+    posX = tonumber(posX)
+    posZ = tonumber(posZ)
     if posY == nil or posX == nil or posZ == nil then
         return unavailable("player world position is unavailable")
     end
+    mapID = tonumber(mapID)
     if mapID == nil then
         return unavailable("player map ID is unavailable")
     end
     local areaID = C_Map.GetBestMapForUnit("player")
-    if areaID == nil or tonumber(areaID) == nil or tonumber(areaID) <= 0 then
+    areaID = tonumber(areaID)
+    if areaID == nil or areaID <= 0 then
         return unavailable("player area ID is unavailable")
     end
     local facing = GetPlayerFacing()
+    facing = tonumber(facing)
     if facing == nil then
         return unavailable("player facing is unavailable")
     end
     return {
         available = true,
-        x = tonumber(posX),
-        y = tonumber(posY),
-        z = tonumber(posZ),
-        mapID = tonumber(mapID),
-        areaID = tonumber(areaID),
-        facing = tonumber(facing),
+        x = posX,
+        y = posY,
+        z = posZ,
+        mapID = mapID,
+        areaID = areaID,
+        facing = facing,
     }
 end
 
@@ -58,6 +64,8 @@ function PositionService:GetVisibleObjectivePosition(kind, entryID)
         return unavailable("visible-position API is unavailable")
     end
     local x, y, distance = finder(validatedID)
+    x = tonumber(x)
+    y = tonumber(y)
     if x == nil or y == nil then
         return unavailable("objective is not currently visible")
     end
@@ -69,8 +77,8 @@ function PositionService:GetVisibleObjectivePosition(kind, entryID)
         available = true,
         kind = validatedKind,
         entryID = validatedID,
-        x = tonumber(x),
-        y = tonumber(y),
+        x = x,
+        y = y,
         distance = tonumber(distance),
         mapID = player.mapID,
         areaID = player.areaID,

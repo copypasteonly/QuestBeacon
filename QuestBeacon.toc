@@ -8,4 +8,5 @@ Core.lua
 DB.lua
 PositionService.lua
 QuestService.lua
+Navigation.lua
 Events.lua

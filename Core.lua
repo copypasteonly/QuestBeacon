@@ -22,7 +22,7 @@ function QuestBeacon:Disable(reason)
     end
 end
 
-function QuestBeacon:CheckDependencies()
+function QuestBeacon:CheckClassicAPI()
     local missing = {}
     local function requireFunction(value, name)
         if type(value) ~= "function" then
@@ -53,14 +53,39 @@ function QuestBeacon:CheckDependencies()
     else
         requireFunction(C_Map.GetBestMapForUnit, "C_Map.GetBestMapForUnit")
     end
+    requireFunction(GetPlayerFacing, "GetPlayerFacing")
 
+    if table.getn(missing) > 0 then
+        return false, table.concat(missing, ", ")
+    end
+    return true, nil
+end
+
+function QuestBeacon:CheckHearthDB()
+    local missing = {}
+    local function requireFunction(value, name)
+        if type(value) ~= "function" then
+            table.insert(missing, name)
+        end
+    end
     requireFunction(HDB_OpenAddon, "HDB_OpenAddon")
     requireFunction(HDB_QueryRaw, "HDB_QueryRaw")
     requireFunction(HDB_Close, "HDB_Close")
     requireFunction(HDB_GetVersion, "HDB_GetVersion")
-
     if table.getn(missing) > 0 then
-        return false, "missing dependencies: " .. table.concat(missing, ", ")
+        return false, table.concat(missing, ", ")
+    end
+    return true, nil
+end
+
+function QuestBeacon:CheckDependencies()
+    local classicReady, classicReason = self:CheckClassicAPI()
+    local hearthReady, hearthReason = self:CheckHearthDB()
+    if not classicReady then
+        return false, "missing ClassicAPI functions: " .. tostring(classicReason)
+    end
+    if not hearthReady then
+        return false, "missing HearthDB functions: " .. tostring(hearthReason)
     end
     return true, nil
 end
