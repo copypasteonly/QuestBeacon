@@ -281,6 +281,9 @@ function Navigation:PrintProof(state, automatic)
     local objective = target.objective
     local prefix = automatic and "auto proof" or "proof"
     QuestBeacon:Print(prefix .. ": quest " .. target.quest.id .. " - " .. target.quest.title)
+    if target.quest.progressUnavailable then
+        QuestBeacon:Print("native quest progress unavailable; using authoritative player-slot and static objective IDs")
+    end
     QuestBeacon:Print("objective " .. tostring(objective.index or "-") .. " " .. tostring(objective.kind) ..
         " " .. tostring(objective.entryID or "-") .. " - " .. tostring(objective.text or ""))
     QuestBeacon:Print(string.format("player x=%.2f y=%.2f area=%d map=%d facing=%.3f",
@@ -359,7 +362,12 @@ function Navigation:PrintStatus()
         " expanded=" .. tostring(questDiagnostics.expandedEntries) ..
         " collapsed=" .. tostring(questDiagnostics.collapsedHeaders) ..
         " ids=" .. tostring(questDiagnostics.resolvedQuestIDs) ..
-        " primes=" .. tostring(questDiagnostics.primeAttempts or 0))
+        " primes=" .. tostring(questDiagnostics.primeAttempts or 0) ..
+        " titles=" .. tostring(questDiagnostics.titleRows or 0) ..
+        " source=" .. tostring(questDiagnostics.source or "unknown"))
+    QuestBeacon:Print("quest recovery scanned=" .. tostring(questDiagnostics.recoveryScanned or 0) ..
+        " active=" .. tostring(questDiagnostics.recoveryActive or 0) ..
+        " reportedQuests=" .. tostring(questDiagnostics.reportedQuests or 0))
     if questDiagnostics.expansionError then
         QuestBeacon:Print("quest header scan failed: " .. tostring(questDiagnostics.expansionError))
     end

@@ -36,6 +36,8 @@ function QuestBeacon:CheckClassicAPI()
         requireFunction(C_QuestLog.GetQuestIDForLogIndex, "C_QuestLog.GetQuestIDForLogIndex")
         requireFunction(C_QuestLog.RequestLoadQuestByID, "C_QuestLog.RequestLoadQuestByID")
         requireFunction(C_QuestLog.IsQuestDataCachedByID, "C_QuestLog.IsQuestDataCachedByID")
+        requireFunction(C_QuestLog.IsUnitOnQuest, "C_QuestLog.IsUnitOnQuest")
+        requireFunction(C_QuestLog.GetQuestDetails, "C_QuestLog.GetQuestDetails")
     end
     requireFunction(GetNumQuestLogEntries, "GetNumQuestLogEntries")
     requireFunction(GetQuestLogTitle, "GetQuestLogTitle")

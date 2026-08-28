@@ -7,6 +7,7 @@ DB.handle = nil
 DB.metadata = nil
 DB.entityCache = {}
 DB.cacheSize = 0
+DB.questIDs = nil
 
 local function positiveInteger(value)
     local number = tonumber(value)
@@ -105,10 +106,34 @@ end
 function DB:ClearCache()
     self.entityCache = {}
     self.cacheSize = 0
+    self.questIDs = nil
 end
 
 function DB:GetCacheSize()
     return self.cacheSize
+end
+
+function DB:GetQuestIDs()
+    if self.questIDs then
+        return self.questIDs, nil
+    end
+    if not self:Open() then
+        return nil, QuestBeacon.disabledReason
+    end
+    local columns, rows, queryError = self:QueryRaw("SELECT id FROM quests ORDER BY id")
+    if queryError then
+        return nil, queryError
+    end
+    local questIDs = {}
+    local index
+    for index = 1, table.getn(rows) do
+        local questID = positiveInteger(rows[index][1])
+        if questID then
+            table.insert(questIDs, questID)
+        end
+    end
+    self.questIDs = questIDs
+    return questIDs, nil
 end
 
 function DB:GetEntityClusters(kind, entryID)

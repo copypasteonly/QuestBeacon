@@ -10,12 +10,18 @@ QuestService.refreshAgain = false
 QuestService.membershipSignature = nil
 QuestService.scanningHeaders = false
 QuestService.primeAttempts = 0
+QuestService.recoveredEntries = nil
+QuestService.recoveryScanned = 0
 QuestService.diagnostics = {
     visibleEntries = 0,
     expandedEntries = 0,
     collapsedHeaders = 0,
     resolvedQuestIDs = 0,
     expansionError = nil,
+    source = "native_log",
+    titleRows = 0,
+    recoveryScanned = 0,
+    recoveryActive = 0,
 }
 
 local function positiveInteger(value)
@@ -30,8 +36,16 @@ local function completed(value)
     return value == true or tonumber(value) == 1
 end
 
+local function questLogCounts()
+    local entries, quests = GetNumQuestLogEntries()
+    return tonumber(entries) or 0, tonumber(quests) or 0
+end
+
 function QuestService:OnQuestLogChanged()
     self.failedRequests = {}
+    if not self.scanningHeaders then
+        self.recoveredEntries = nil
+    end
     if self.refreshing then
         self.refreshAgain = true
     end
@@ -40,22 +54,35 @@ end
 function QuestService:ScanVisibleEntries()
     local entries = {}
     local signatureParts = {}
-    local entryCount = tonumber(GetNumQuestLogEntries()) or 0
+    local entryCount = questLogCounts()
+    local scanLimit = entryCount
+    if scanLimit < 40 then
+        scanLimit = 40
+    end
+    local titleRows = 0
     local logIndex
-    for logIndex = 1, entryCount do
-        local questID = tonumber(C_QuestLog.GetQuestIDForLogIndex(logIndex))
-        if questID and questID > 0 then
+    for logIndex = 1, scanLimit do
+        local title, level, questTag, isHeader = GetQuestLogTitle(logIndex)
+        if title then
+            titleRows = titleRows + 1
+        end
+        local rawQuestID = C_QuestLog.GetQuestIDForLogIndex(logIndex)
+        local questID = tonumber(rawQuestID)
+        if title and not isHeader and questID and questID > 0 then
             table.insert(entries, { id = questID, logIndex = logIndex })
             table.insert(signatureParts, tostring(logIndex) .. ":" .. tostring(questID))
         end
     end
-    return entries, table.concat(signatureParts, ","), entryCount
+    return entries, table.concat(signatureParts, ","), entryCount, titleRows
 end
 
 function QuestService:CollectCollapsedHeaders()
     local collapsed = {}
     local occurrences = {}
-    local entryCount = tonumber(GetNumQuestLogEntries()) or 0
+    local entryCount = questLogCounts()
+    if entryCount < 40 then
+        entryCount = 40
+    end
     local logIndex
     for logIndex = 1, entryCount do
         local title, level, questTag, isHeader, isCollapsed = GetQuestLogTitle(logIndex)
@@ -73,7 +100,10 @@ end
 function QuestService:RestoreCollapsedHeaders(collapsed)
     local restoreIndexes = {}
     local occurrences = {}
-    local entryCount = tonumber(GetNumQuestLogEntries()) or 0
+    local entryCount = questLogCounts()
+    if entryCount < 40 then
+        entryCount = 40
+    end
     local logIndex
     for logIndex = 1, entryCount do
         local title, level, questTag, isHeader = GetQuestLogTitle(logIndex)
@@ -91,13 +121,42 @@ function QuestService:RestoreCollapsedHeaders(collapsed)
     end
 end
 
+function QuestService:DiscoverPlayerQuestSlots()
+    if self.recoveredEntries then
+        return self.recoveredEntries, self.recoveryScanned
+    end
+    if not QuestBeacon.DB or type(QuestBeacon.DB.GetQuestIDs) ~= "function" or
+       not C_QuestLog or type(C_QuestLog.IsUnitOnQuest) ~= "function" then
+        return {}, 0
+    end
+    local questIDs = QuestBeacon.DB:GetQuestIDs()
+    if not questIDs then
+        return {}, 0
+    end
+    local recovered = {}
+    local index
+    for index = 1, table.getn(questIDs) do
+        local ok, active = pcall(C_QuestLog.IsUnitOnQuest, "player", questIDs[index])
+        if ok and active then
+            table.insert(recovered, {
+                id = questIDs[index],
+                logIndex = table.getn(recovered) + 1,
+                recovered = true,
+            })
+        end
+    end
+    self.recoveredEntries = recovered
+    self.recoveryScanned = table.getn(questIDs)
+    return recovered, table.getn(questIDs)
+end
+
 function QuestService:CollectLogEntries()
-    local visibleEntries = tonumber(GetNumQuestLogEntries()) or 0
+    local visibleEntries, reportedQuests = questLogCounts()
     if visibleEntries == 0 then
         self.primeAttempts = self.primeAttempts + 1
         pcall(GetQuestLogTitle, 1)
         pcall(C_QuestLog.GetQuestIDForLogIndex, 1)
-        visibleEntries = tonumber(GetNumQuestLogEntries()) or 0
+        visibleEntries = questLogCounts()
     end
     local collapsed = self:CollectCollapsedHeaders()
     local collapsedCount = 0
@@ -106,14 +165,14 @@ function QuestService:CollectLogEntries()
         collapsedCount = collapsedCount + 1
     end
 
-    local entries, signature, expandedEntries
+    local entries, signature, expandedEntries, titleRows
     local expansionError = nil
     if collapsedCount > 0 and type(ExpandQuestHeader) == "function" and type(CollapseQuestHeader) == "function" then
         self.scanningHeaders = true
         local expandOK, expandResult = pcall(ExpandQuestHeader, 0)
-        local scanOK, scanEntries, scanSignature, scanCount = false, nil, nil, nil
+        local scanOK, scanEntries, scanSignature, scanCount, scanTitleRows = false, nil, nil, nil, nil
         if expandOK then
-            scanOK, scanEntries, scanSignature, scanCount = pcall(function()
+            scanOK, scanEntries, scanSignature, scanCount, scanTitleRows = pcall(function()
                 return self:ScanVisibleEntries()
             end)
         end
@@ -125,7 +184,7 @@ function QuestService:CollectLogEntries()
         end
         self.scanningHeaders = false
         if expandOK and scanOK and restoreOK then
-            entries, signature, expandedEntries = scanEntries, scanSignature, scanCount
+            entries, signature, expandedEntries, titleRows = scanEntries, scanSignature, scanCount, scanTitleRows
         else
             if not expandOK then
                 expansionError = "expand: " .. tostring(expandResult)
@@ -137,7 +196,23 @@ function QuestService:CollectLogEntries()
         end
     end
     if not entries then
-        entries, signature, expandedEntries = self:ScanVisibleEntries()
+        entries, signature, expandedEntries, titleRows = self:ScanVisibleEntries()
+    end
+    local source = "native_log"
+    local recoveryScanned = 0
+    if table.getn(entries) == 0 then
+        entries, recoveryScanned = self:DiscoverPlayerQuestSlots()
+        if table.getn(entries) > 0 then
+            source = "player_slots"
+            local signatureParts = {}
+            local index
+            for index = 1, table.getn(entries) do
+                table.insert(signatureParts, "slot:" .. tostring(entries[index].id))
+            end
+            signature = table.concat(signatureParts, ",")
+        end
+    else
+        self.recoveredEntries = nil
     end
     self.diagnostics = {
         visibleEntries = visibleEntries,
@@ -146,6 +221,11 @@ function QuestService:CollectLogEntries()
         resolvedQuestIDs = table.getn(entries),
         expansionError = expansionError,
         primeAttempts = self.primeAttempts,
+        reportedQuests = reportedQuests,
+        source = source,
+        titleRows = titleRows or 0,
+        recoveryScanned = recoveryScanned,
+        recoveryActive = source == "player_slots" and table.getn(entries) or 0,
     }
     return entries, signature
 end
@@ -176,6 +256,9 @@ function QuestService:BuildObjective(logIndex, objectiveIndex)
 end
 
 function QuestService:BuildQuest(entry)
+    if entry.recovered then
+        return self:BuildRecoveredQuest(entry)
+    end
     local title, level, questTag, isHeader, isCollapsed, isComplete = GetQuestLogTitle(entry.logIndex)
     local quest = {
         id = entry.id,
@@ -202,10 +285,68 @@ function QuestService:BuildQuest(entry)
 
     self.pendingRequests[entry.id] = nil
     self.failedRequests[entry.id] = nil
-    local objectiveCount = tonumber(GetNumQuestLeaderBoards(entry.logIndex)) or 0
+    local rawObjectiveCount = GetNumQuestLeaderBoards(entry.logIndex)
+    local objectiveCount = tonumber(rawObjectiveCount) or 0
     local objectiveIndex
     for objectiveIndex = 1, objectiveCount do
         table.insert(quest.objectives, self:BuildObjective(entry.logIndex, objectiveIndex))
+    end
+    return quest
+end
+
+function QuestService:BuildRecoveredQuest(entry)
+    local quest = {
+        id = entry.id,
+        logIndex = entry.logIndex,
+        title = "Quest " .. tostring(entry.id),
+        level = 0,
+        complete = false,
+        pendingData = false,
+        unresolvedReason = nil,
+        objectives = {},
+        progressUnavailable = true,
+        logOrderUnavailable = true,
+    }
+    if not C_QuestLog.IsQuestDataCachedByID(entry.id) then
+        if self.failedRequests[entry.id] then
+            quest.unresolvedReason = "quest_data_unavailable"
+            return quest
+        end
+        quest.pendingData = true
+        quest.unresolvedReason = "pending_static_data"
+        self.pendingRequests[entry.id] = true
+        C_QuestLog.RequestLoadQuestByID(entry.id)
+        return quest
+    end
+    local details = C_QuestLog.GetQuestDetails(entry.id)
+    if not details then
+        quest.unresolvedReason = "quest_data_unavailable"
+        return quest
+    end
+    quest.title = details.title or quest.title
+    quest.level = tonumber(details.level) or 0
+    local requirements = details.requirements or {}
+    local index
+    for index = 1, table.getn(requirements) do
+        local requirement = requirements[index]
+        local objective = {
+            index = index,
+            text = requirement.text or "",
+            kind = requirement.kind,
+            entryID = positiveInteger(requirement.id),
+            complete = false,
+            pendingData = false,
+            progressUnavailable = true,
+            unresolvedReason = nil,
+        }
+        if objective.kind == "item" then
+            objective.unresolvedReason = "unsupported_item"
+        elseif objective.kind ~= "monster" and objective.kind ~= "object" then
+            objective.unresolvedReason = "unsupported_objective_kind"
+        elseif not objective.entryID then
+            objective.unresolvedReason = "event_text_no_id"
+        end
+        table.insert(quest.objectives, objective)
     end
     return quest
 end
