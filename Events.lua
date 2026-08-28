@@ -3,6 +3,21 @@ local Coordinator = QuestBeacon.EventCoordinator
 
 Coordinator.questDirty = false
 Coordinator.initialRefresh = true
+Coordinator.questSettleUntil = 0
+Coordinator.nextQuestSettle = 0
+
+function Coordinator:Now()
+    if type(GetTime) == "function" then
+        return GetTime()
+    end
+    return 0
+end
+
+function Coordinator:StartQuestSettlement()
+    local now = self:Now()
+    self.questSettleUntil = now + 8
+    self.nextQuestSettle = now
+end
 
 function Coordinator:MarkQuestDirty(logChanged)
     self.questDirty = true
@@ -15,10 +30,19 @@ function Coordinator:ProcessFrame()
     if not QuestBeacon.enabled then
         return
     end
+    local now = self:Now()
+    if not self.questDirty and self.questSettleUntil > now and self.nextQuestSettle <= now then
+        self.questDirty = true
+        self.nextQuestSettle = now + 0.25
+    end
     if self.questDirty then
         self.questDirty = false
         if QuestBeacon.QuestService then
             QuestBeacon.QuestService:Refresh()
+            local diagnostics = QuestBeacon.QuestService:GetDiagnostics()
+            if diagnostics.resolvedQuestIDs > 0 then
+                self.questSettleUntil = 0
+            end
         end
         if QuestBeacon.Navigation and QuestBeacon.PositionService then
             QuestBeacon.Navigation:AutoResolve(self.initialRefresh)
@@ -49,6 +73,7 @@ function Coordinator:OnEvent(eventName, first, second)
         if QuestBeacon.DB and not QuestBeacon.DB:Open() then
             return
         end
+        self:StartQuestSettlement()
         self:MarkQuestDirty(true)
     elseif eventName == "QUEST_LOG_UPDATE" or eventName == "UNIT_QUEST_LOG_CHANGED" then
         if QuestBeacon.QuestService and QuestBeacon.QuestService.scanningHeaders then

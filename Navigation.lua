@@ -358,7 +358,8 @@ function Navigation:PrintStatus()
     QuestBeacon:Print("quest log visible=" .. tostring(questDiagnostics.visibleEntries) ..
         " expanded=" .. tostring(questDiagnostics.expandedEntries) ..
         " collapsed=" .. tostring(questDiagnostics.collapsedHeaders) ..
-        " ids=" .. tostring(questDiagnostics.resolvedQuestIDs))
+        " ids=" .. tostring(questDiagnostics.resolvedQuestIDs) ..
+        " primes=" .. tostring(questDiagnostics.primeAttempts or 0))
     if questDiagnostics.expansionError then
         QuestBeacon:Print("quest header scan failed: " .. tostring(questDiagnostics.expansionError))
     end
@@ -390,6 +391,9 @@ SlashCmdList["QUESTBEACON"] = function(message)
             QuestBeacon:Print("usage: /qbeacon status | proof [activeQuestID]")
             return
         end
+    end
+    if QuestBeacon.EventCoordinator then
+        QuestBeacon.EventCoordinator:StartQuestSettlement()
     end
     QuestBeacon.QuestService:Refresh()
     local player = QuestBeacon.PositionService:GetPlayerPosition()

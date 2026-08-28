@@ -9,6 +9,7 @@ QuestService.refreshing = false
 QuestService.refreshAgain = false
 QuestService.membershipSignature = nil
 QuestService.scanningHeaders = false
+QuestService.primeAttempts = 0
 QuestService.diagnostics = {
     visibleEntries = 0,
     expandedEntries = 0,
@@ -92,6 +93,12 @@ end
 
 function QuestService:CollectLogEntries()
     local visibleEntries = tonumber(GetNumQuestLogEntries()) or 0
+    if visibleEntries == 0 then
+        self.primeAttempts = self.primeAttempts + 1
+        pcall(GetQuestLogTitle, 1)
+        pcall(C_QuestLog.GetQuestIDForLogIndex, 1)
+        visibleEntries = tonumber(GetNumQuestLogEntries()) or 0
+    end
     local collapsed = self:CollectCollapsedHeaders()
     local collapsedCount = 0
     local key
@@ -138,6 +145,7 @@ function QuestService:CollectLogEntries()
         collapsedHeaders = collapsedCount,
         resolvedQuestIDs = table.getn(entries),
         expansionError = expansionError,
+        primeAttempts = self.primeAttempts,
     }
     return entries, signature
 end
