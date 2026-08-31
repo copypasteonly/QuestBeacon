@@ -102,6 +102,11 @@ function Renderer:Refresh()
                 shown = shown + 1
                 local frame = self:GetPin(shown) frame.pin = pin
                 frame.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. pin.texture)
+                if pin.role == "available" or pin.role == "turnIns" then
+                    frame.texture:SetVertexColor(1, 0.82, 0, 1)
+                else
+                    frame.texture:SetVertexColor(1, 1, 1, 1)
+                end
                 frame:ClearAllPoints() frame:SetPoint("CENTER", WorldMapButton, "TOPLEFT", x * width, -y * height)
                 frame:Show()
             end

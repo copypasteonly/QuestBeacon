@@ -32,9 +32,9 @@ end
 
 function Renderer:GetPinSize(pin, zoomYards)
     local cluster = pin and string.find(pin.texture or "", "^cluster_") ~= nil
-    local referenceSize = cluster and 18 or 14
-    local minimum = cluster and 10 or 9
-    local maximum = cluster and 28 or 22
+    local referenceSize = cluster and 24 or 20
+    local minimum = cluster and 18 or 14
+    local maximum = cluster and 38 or 32
     local size = referenceSize * REFERENCE_ZOOM_YARDS / (tonumber(zoomYards) or REFERENCE_ZOOM_YARDS)
     return math.floor(math.max(minimum, math.min(maximum, size)) + 0.5)
 end
@@ -118,6 +118,11 @@ function Renderer:RenderPin(pin, player, settings, width, height, zoomYards, rad
     if pinChanged then
         frame.pin = pin
         frame.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. pin.texture)
+        if pin.role == "available" or pin.role == "turnIns" then
+            frame.texture:SetVertexColor(1, 0.82, 0, 1)
+        else
+            frame.texture:SetVertexColor(1, 1, 1, 1)
+        end
     end
     self:ApplyPinSize(frame, pin, zoomYards, pinChanged)
     frame:ClearAllPoints()
