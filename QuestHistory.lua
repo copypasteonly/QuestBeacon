@@ -39,6 +39,7 @@ end
 
 function History:Reset()
     QuestBeaconHistory = { completed = {} }
+    if QuestBeacon.AvailabilityService then QuestBeacon.AvailabilityService:Invalidate("quest history reset") end
 end
 
 History:Initialize()

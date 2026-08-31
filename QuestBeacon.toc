@@ -12,6 +12,7 @@ DB.lua
 PositionService.lua
 QuestHistory.lua
 QuestService.lua
+AvailabilityService.lua
 WatchService.lua
 Navigation.lua
 Arrow.lua

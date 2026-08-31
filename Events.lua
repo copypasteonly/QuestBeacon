@@ -42,6 +42,9 @@ function Coordinator:ProcessFrame()
             if QuestBeacon.WatchService then
                 QuestBeacon.WatchService:Refresh(QuestBeacon.QuestService:GetActiveQuests())
             end
+            if QuestBeacon.AvailabilityService then
+                QuestBeacon.AvailabilityService:ObserveQuestState(QuestBeacon.QuestService:GetActiveQuests())
+            end
             local diagnostics = QuestBeacon.QuestService:GetDiagnostics()
             if diagnostics.resolvedQuestIDs > 0 then
                 self.questSettleUntil = 0
@@ -68,6 +71,7 @@ function Coordinator:OnEvent(eventName, first, second)
             if QuestBeacon.QuestHistory then
                 QuestBeacon.QuestHistory:Initialize()
             end
+            if QuestBeacon.AvailabilityService then QuestBeacon.AvailabilityService:Initialize() end
             if QuestBeacon.Arrow then
                 QuestBeacon.Arrow:OnAddonLoaded()
             end
@@ -102,8 +106,13 @@ function Coordinator:OnEvent(eventName, first, second)
         self:MarkQuestDirty(false)
     elseif eventName == "QUEST_TURNED_IN" then
         if QuestBeacon.QuestHistory and QuestBeacon.QuestHistory:RecordComplete(first) then
+            if QuestBeacon.AvailabilityService then QuestBeacon.AvailabilityService:Invalidate("quest history") end
             self:MarkQuestDirty(true)
         end
+    elseif eventName == "PLAYER_LEVEL_UP" or eventName == "SKILL_LINES_CHANGED" then
+        if QuestBeacon.AvailabilityService then QuestBeacon.AvailabilityService:Invalidate("player eligibility") end
+        if QuestBeacon.WorldMapPins then QuestBeacon.WorldMapPins:Refresh() end
+        if QuestBeacon.MinimapPins then QuestBeacon.MinimapPins:MarkDirty() end
     elseif eventName == "QUEST_DATA_LOAD_RESULT" then
         if QuestBeacon.QuestService then
             QuestBeacon.QuestService:OnQuestDataLoaded(tonumber(first), tonumber(second) == 1)
@@ -121,6 +130,8 @@ frame:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
 frame:RegisterEvent("QUEST_DATA_LOAD_RESULT")
 frame:RegisterEvent("BAG_UPDATE")
 frame:RegisterEvent("QUEST_TURNED_IN")
+frame:RegisterEvent("PLAYER_LEVEL_UP")
+frame:RegisterEvent("SKILL_LINES_CHANGED")
 frame:RegisterEvent("PLAYER_LOGOUT")
 frame:SetScript("OnEvent", function()
     Coordinator:OnEvent(event, arg1, arg2)

@@ -29,48 +29,6 @@ Pins.worldPins = {}
 Pins.minimapPins = {}
 Pins.lastAreaID = nil
 
-local RACE_MASKS = {HUMAN=1, ORC=2, DWARF=4, NIGHTELF=8, SCOURGE=16, TAUREN=32, GNOME=64, TROLL=128}
-local CLASS_MASKS = {WARRIOR=1, PALADIN=2, HUNTER=4, ROGUE=8, PRIEST=16, SHAMAN=64, MAGE=128, WARLOCK=256, DRUID=1024}
-
-local function hasMask(mask, bit)
-    if not mask or mask == 0 or not bit then return true end
-    return math.mod(math.floor(mask / bit), 2) == 1
-end
-
-local function activeSet()
-    local result = {}
-    local quests = QuestBeacon.QuestService:GetActiveQuests()
-    local index
-    for index = 1, table.getn(quests) do result[quests[index].id] = true end
-    return result
-end
-
-function Pins:IsAvailable(row, active)
-    if active[row.questID] or QuestBeacon.QuestHistory:IsComplete(row.questID) then return false end
-    local level = tonumber(UnitLevel("player")) or 0
-    if row.minLevel > level and (not QuestBeacon.Config:Get("availability.highLevel") or row.minLevel > level + 3) then return false end
-    if row.level < level - 4 and not QuestBeacon.Config:Get("availability.lowLevel") then return false end
-    if row.eventID and not QuestBeacon.Config:Get("availability.event") then return false end
-    local localizedRace, raceToken = UnitRace("player")
-    local localizedClass, classToken = UnitClass("player")
-    if not hasMask(row.raceMask, RACE_MASKS[raceToken]) or not hasMask(row.classMask, CLASS_MASKS[classToken]) then return false end
-    if row.skillID then
-        if not C_SpellBook or type(C_SpellBook.GetSkillLineRank) ~= "function" then return false end
-        local rank = C_SpellBook.GetSkillLineRank(row.skillID)
-        if not tonumber(rank) or tonumber(rank) <= 0 then return false end
-    end
-    local prerequisites = QuestBeacon.DB:GetQuestPrerequisites(row.questID)
-    if prerequisites and table.getn(prerequisites) > 0 then
-        local satisfied = false
-        local index
-        for index = 1, table.getn(prerequisites) do
-            if QuestBeacon.QuestHistory:IsComplete(prerequisites[index]) then satisfied = true end
-        end
-        if not satisfied then return false end
-    end
-    return true
-end
-
 local function addPin(result, seen, pin)
     if not pin.x or not pin.y or pin.mapID == nil then return end
     local key = pin.role .. ":" .. tostring(pin.mapID) .. ":" .. string.format("%.2f:%.2f", pin.x, pin.y)
@@ -135,13 +93,16 @@ function Pins:AddEnderPins(result, seen, quest)
     end
 end
 
-function Pins:AddAvailablePins(result, seen, mapID, active)
-    local rows = QuestBeacon.DB:GetQuestStarterClustersForMap(mapID)
+function Pins:AddAvailablePins(result, seen, areaID)
+    QuestBeacon.AvailabilityService:RequestArea(areaID)
+    local snapshot = QuestBeacon.AvailabilityService:GetSnapshot(areaID)
+    if not snapshot then return end
+    local rows = QuestBeacon.DB:GetQuestStarterClustersForArea(areaID)
     if not rows then return end
     local index
     for index = 1, table.getn(rows) do
         local row = rows[index]
-        if self:IsAvailable(row, active) then
+        if snapshot.available[row.questID] then
             local quest = {id=row.questID, title=row.title or ("Quest " .. row.questID), level=row.level}
             local objective = {index=9999, kind="available", entryID=row.entryID, text="Available quest"}
             addPin(result, seen, clusterPin(quest, objective, row, "available", "available", "available"))
@@ -151,7 +112,6 @@ end
 
 function Pins:Rebuild(areaID, destination)
     local result, seen = {}, {}
-    local active = activeSet()
     local quests = QuestBeacon.QuestService:GetActiveQuests()
     local index
     for index = 1, table.getn(quests) do
@@ -160,8 +120,7 @@ function Pins:Rebuild(areaID, destination)
         for objectiveIndex = 1, table.getn(quest.objectives) do self:AddObjectivePins(result, seen, quest, quest.objectives[objectiveIndex]) end
         self:AddEnderPins(result, seen, quest)
     end
-    local area = areaID and QuestBeacon.DB:GetArea(areaID) or nil
-    if area then self:AddAvailablePins(result, seen, area.mapID, active) end
+    if areaID then self:AddAvailablePins(result, seen, areaID) end
     table.sort(result, function(a,b)
         if a.quest.id ~= b.quest.id then return a.quest.id < b.quest.id end
         if a.role ~= b.role then return a.role < b.role end
@@ -174,6 +133,19 @@ function Pins:Rebuild(areaID, destination)
     self.lastAreaID = areaID
     return result
 end
+
+function Pins:OnAvailabilityChanged(areaID)
+    if self.lastAreaID ~= areaID then return end
+    if QuestBeacon.WorldMapPins then QuestBeacon.WorldMapPins:Refresh() end
+    if QuestBeacon.MinimapPins then
+        QuestBeacon.MinimapPins:MarkDirty()
+        QuestBeacon.MinimapPins:RefreshPositions()
+    end
+end
+
+QuestBeacon.AvailabilityService:RegisterListener(Pins, function(owner, areaID)
+    owner:OnAvailabilityChanged(areaID)
+end)
 
 function Pins:GetWorldMapPins() return self.worldPins end
 function Pins:GetMinimapPins() return self.minimapPins end

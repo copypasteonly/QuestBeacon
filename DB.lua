@@ -13,7 +13,6 @@ DB.cacheSize = 0
 DB.questIDs = nil
 DB.questCache = {}
 DB.areaCache = {}
-DB.starterMapCache = {}
 DB.candidateAreaCache = {}
 DB.starterAreaCache = {}
 
@@ -120,7 +119,6 @@ function DB:ClearCache()
     self.questIDs = nil
     self.questCache = {}
     self.areaCache = {}
-    self.starterMapCache = {}
     self.candidateAreaCache = {}
     self.starterAreaCache = {}
 end
@@ -178,39 +176,6 @@ function DB:GetArea(areaID)
         mappingStatus=row[10] }
     self.areaCache[id] = area
     return area, nil
-end
-
-function DB:GetQuestStarterClustersForMap(mapID)
-    local id = tonumber(mapID)
-    if id == nil or math.floor(id) ~= id or id < 0 then return nil, "invalid map ID" end
-    if self.starterMapCache[id] then return self.starterMapCache[id], nil end
-    if not self:Open() then return nil, QuestBeacon.disabledReason end
-    local columns, rows, queryError = self:QueryRaw(
-        "SELECT s.quest_id,q.level,q.min_level,q.race_mask,q.class_mask,q.skill_id,q.event_id,q.title_en_us," ..
-        "c.kind,c.entry_id,c.cluster_id,c.area_id,c.mapped_area_id,c.map_id,c.world_x,c.world_y," ..
-        "c.point_count,c.radius,c.is_noise,c.conversion_status,e.name_en_us " ..
-        "FROM quest_starters s JOIN quests q ON q.id=s.quest_id " ..
-        "JOIN entity_clusters c ON c.kind=s.source_kind AND c.entry_id=s.source_id " ..
-        "LEFT JOIN entities e ON e.kind=c.kind AND e.entry_id=c.entry_id " ..
-        "WHERE c.map_id=" .. id .. " AND c.world_x IS NOT NULL AND c.world_y IS NOT NULL " ..
-        "ORDER BY s.quest_id,c.kind,c.entry_id,c.cluster_id"
-    )
-    if queryError then return nil, queryError end
-    local results = {}
-    local index
-    for index = 1, table.getn(rows) do
-        local row = rows[index]
-        table.insert(results, { questID=tonumber(row[1]), level=tonumber(row[2]) or 0,
-            minLevel=tonumber(row[3]) or 0, raceMask=tonumber(row[4]) or 255,
-            classMask=tonumber(row[5]) or 0, skillID=nullableNumber(row[6]), eventID=nullableNumber(row[7]),
-            title=row[8], kind=tonumber(row[9]), entryID=tonumber(row[10]), clusterID=tonumber(row[11]),
-            areaID=tonumber(row[12]), mappedAreaID=nullableNumber(row[13]), mapID=tonumber(row[14]),
-            x=tonumber(row[15]), y=tonumber(row[16]), pointCount=tonumber(row[17]), radius=tonumber(row[18]),
-            isNoise=booleanNumber(row[19]), conversionStatus=row[20], entityName=row[21] })
-    end
-    self.starterMapCache[id] = results
-    self.cacheSize = self.cacheSize + 1
-    return results, nil
 end
 
 function DB:GetQuestCandidatesForArea(areaID)

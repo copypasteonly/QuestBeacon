@@ -674,6 +674,12 @@ function Navigation:PrintStatus()
             (scheduler.maxFrameSeconds or 0) * 1000, tostring(scheduler.slowestLabel or "none"),
             (scheduler.slowestSeconds or 0) * 1000))
     end
+    if QuestBeacon.AvailabilityService then
+        local availability = QuestBeacon.AvailabilityService:GetStats()
+        QuestBeacon:Print("availability area=" .. tostring(availability.lastAreaID or 0) ..
+            " scanned=" .. tostring(availability.scanned or 0) .. " available=" ..
+            tostring(availability.available or 0) .. " publishes=" .. tostring(availability.publishes or 0))
+    end
     if questDiagnostics.expansionError then
         QuestBeacon:Print("quest header scan failed: " .. tostring(questDiagnostics.expansionError))
     end
