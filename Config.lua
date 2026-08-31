@@ -8,6 +8,7 @@ Config.defaults = {
     trackingMode = "auto", arrowFontSize = 12,
     trackerShown = true, trackerLocked = false, trackerFontSize = 12,
     trackerPoint = "TOPRIGHT", trackerX = -30, trackerY = -180,
+    trackerWidth = 320, trackerHeight = 300,
     questSort = "distance", watchedQuests = {}, watchOverrides = {},
     trackerView = "all", replaceNativeTracker = true,
     trackerShowLevels = true, trackerExpandObjectives = false,
@@ -66,6 +67,8 @@ function Config:Initialize()
     fill(QuestBeaconSettings, self.defaults)
     QuestBeaconSettings.arrowFontSize = math.max(8, math.min(24, tonumber(QuestBeaconSettings.arrowFontSize) or 12))
     QuestBeaconSettings.trackerFontSize = math.max(8, math.min(20, tonumber(QuestBeaconSettings.trackerFontSize) or 12))
+    QuestBeaconSettings.trackerWidth = math.max(240, math.min(600, tonumber(QuestBeaconSettings.trackerWidth) or 320))
+    QuestBeaconSettings.trackerHeight = math.max(100, math.min(800, tonumber(QuestBeaconSettings.trackerHeight) or 300))
     if QuestBeaconSettings.questSort ~= "level" then QuestBeaconSettings.questSort = "distance" end
     if QuestBeaconSettings.trackerView ~= "watched" and QuestBeaconSettings.trackerView ~= "zone" then
         QuestBeaconSettings.trackerView = "all"

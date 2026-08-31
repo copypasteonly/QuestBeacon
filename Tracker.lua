@@ -244,6 +244,23 @@ function Tracker:ApplyPosition()
     self.frame:SetPoint(point, UIParent, point, QuestBeacon.Config:Get("trackerX"), QuestBeacon.Config:Get("trackerY"))
 end
 
+function Tracker:SaveSize()
+    QuestBeacon.Config:Set("trackerWidth", math.floor((tonumber(self.frame:GetWidth()) or 320) + 0.5))
+    QuestBeacon.Config:Set("trackerHeight", math.floor((tonumber(self.frame:GetHeight()) or 300) + 0.5))
+end
+
+function Tracker:ApplySize()
+    self.frame:SetWidth(QuestBeacon.Config:Get("trackerWidth"))
+    self.frame:SetHeight(QuestBeacon.Config:Get("trackerHeight"))
+end
+
+function Tracker:Scroll(delta)
+    local available = math.max(1, self.frame:GetHeight() - 42)
+    local maximum = math.max(0, (self.content:GetHeight() or 0) - available)
+    self.scrollOffset = math.max(0, math.min(maximum, (self.scrollOffset or 0) + delta))
+    self.scrollFrame:SetVerticalScroll(self.scrollOffset)
+end
+
 function Tracker:QuestTitle(model)
     local quest = model.quest
     local prefix = self:IsFolded(quest.id) and "+ " or "- "
@@ -267,12 +284,16 @@ function Tracker:Refresh()
     if not self.frame then return end
     local rows = self:GetSortedQuests()
     local size = QuestBeacon.Config:Get("trackerFontSize")
+    local contentWidth = math.max(220, self.frame:GetWidth() - 20)
+    self.content:SetWidth(contentWidth)
     local y, questRowIndex, objectiveRowIndex = 0, 0, 0
     local index
     for index = 1, table.getn(rows) do
         local model, quest = rows[index], rows[index].quest
         questRowIndex = questRowIndex + 1
         local row = self:GetQuestRow(questRowIndex)
+        row:SetWidth(contentWidth)
+        row.title:SetWidth(contentWidth - 22)
         row.watch.questID = quest.id row.watch.watched = model.watched
         row:ClearAllPoints() row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
         row.title.questID = quest.id row.title.text:SetText(self:QuestTitle(model))
@@ -287,6 +308,7 @@ function Tracker:Refresh()
                 local objective = quest.objectives[objectiveIndex]
                 objectiveRowIndex = objectiveRowIndex + 1
                 local objectiveRow = self:GetObjectiveRow(objectiveRowIndex)
+                objectiveRow:SetWidth(contentWidth - 22)
                 objectiveRow.questID = quest.id objectiveRow.objectiveIndex = objective.index
                 objectiveRow:ClearAllPoints() objectiveRow:SetPoint("TOPLEFT", self.content, "TOPLEFT", 22, y)
                 objectiveRow.text:SetText(self:ObjectiveText(objective)) setFontSize(objectiveRow.text, size)
@@ -301,7 +323,8 @@ function Tracker:Refresh()
     end
     for index = questRowIndex + 1, table.getn(self.questRows) do self.questRows[index]:Hide() end
     for index = objectiveRowIndex + 1, table.getn(self.objectiveRows) do self.objectiveRows[index]:Hide() end
-    self.content:SetHeight(math.max(20, -y)) self.frame:SetHeight(math.max(45, -y + 34))
+    self.content:SetHeight(math.max(20, -y))
+    self:Scroll(0)
     self.viewButton:SetAlpha(QuestBeacon.Config:Get("trackerView") == "all" and 1 or 0.55)
     self.sortButton.text:SetText(QuestBeacon.Config:Get("questSort") == "level" and "L" or "N")
     if QuestBeacon.Config:Get("trackerShown") then
@@ -322,6 +345,7 @@ end
 
 function Tracker:OnConfigChanged(path)
     if path == "trackerPoint" or path == "trackerX" or path == "trackerY" or path == "reset" then self:ApplyPosition() end
+    if path == "trackerWidth" or path == "trackerHeight" or path == "reset" then self:ApplySize() end
     self:Refresh()
 end
 
@@ -338,9 +362,12 @@ function Tracker:Initialize()
     if self.frame then return end
     local frame = CreateFrame("Frame", "QuestBeaconTrackerFrame", UIParent)
     self.frame = frame
-    frame:SetWidth(320) frame:SetHeight(100) frame:SetFrameStrata("HIGH")
-    frame:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background", edgeFile="Interface\\DialogFrame\\UI-DialogBox-Border", tile=true, tileSize=32, edgeSize=32, insets={left=11,right=12,top=12,bottom=11}})
+    frame:SetWidth(320) frame:SetHeight(300) frame:SetFrameStrata("HIGH")
+    frame:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1, insets={left=1,right=1,top=1,bottom=1}})
+    frame:SetBackdropColor(0.22, 0.22, 0.24, 0.96)
+    frame:SetBackdropBorderColor(0.28, 0.28, 0.32, 1)
     frame:SetMovable(true) frame:SetClampedToScreen(true) frame:EnableMouse(true) frame:RegisterForDrag("LeftButton")
+    frame:SetResizable(true) frame:SetMinResize(240, 100) frame:SetMaxResize(600, 800)
     self.viewButton = textureButton(frame, "tracker_quests.tga", 3, function() Tracker:CycleView() end)
     self.viewButton:SetScript("OnEnter", function() Tracker:ShowControlTooltip(this, "Quest view", "Cycle All, Watched Only, and Current Zone.") end)
     self.viewButton:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
@@ -352,8 +379,30 @@ function Tracker:Initialize()
     self.sortButton:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     self.settingsButton = textureButton(frame, "tracker_settings.tga", 276, function() QuestBeacon.Settings:Toggle() end)
     self.closeButton = textureButton(frame, "tracker_close.tga", 299, function() QuestBeacon.Config:Set("trackerShown", false) end)
-    self.content = CreateFrame("Frame", nil, frame)
-    self.content:SetWidth(300) self.content:SetHeight(20) self.content:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -27)
+    self.scrollFrame = CreateFrame("ScrollFrame", nil, frame)
+    self.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -27)
+    self.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 12)
+    self.scrollFrame:EnableMouseWheel(true)
+    self.scrollFrame:SetScript("OnMouseWheel", function()
+        Tracker:Scroll(-(tonumber(arg1) or 0) * (QuestBeacon.Config:Get("trackerFontSize") + 7))
+    end)
+    self.content = CreateFrame("Frame", nil, self.scrollFrame)
+    self.content:SetWidth(300) self.content:SetHeight(20)
+    self.content:SetPoint("TOPLEFT", self.scrollFrame, "TOPLEFT", 0, 0)
+    self.scrollFrame:SetScrollChild(self.content)
+    self.resizeGrip = CreateFrame("Button", nil, frame)
+    self.resizeGrip:SetWidth(16) self.resizeGrip:SetHeight(16) self.resizeGrip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    self.resizeGrip.text = self.resizeGrip:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.resizeGrip.text:SetAllPoints(self.resizeGrip) self.resizeGrip.text:SetText("/")
+    self.resizeGrip.text:SetTextColor(0.55, 0.55, 0.6, 1)
+    self.resizeGrip:SetScript("OnMouseDown", function()
+        if not QuestBeacon.Config:Get("trackerLocked") then this:GetParent():StartSizing("BOTTOMRIGHT") end
+    end)
+    self.resizeGrip:SetScript("OnMouseUp", function()
+        this:GetParent():StopMovingOrSizing()
+        Tracker:SaveSize()
+        Tracker:Refresh()
+    end)
     frame:SetScript("OnDragStart", function()
         if not QuestBeacon.Config:Get("trackerLocked") then this:StartMoving() this.dragging = true end
     end)
@@ -363,6 +412,7 @@ function Tracker:Initialize()
     end)
     frame:SetScript("OnUpdate", function() QuestBeacon.WatchService:HideNativeTracker() end)
     self:ApplyPosition()
+    self:ApplySize()
     QuestBeacon.Config:RegisterListener(self, self.OnConfigChanged)
     self:Refresh()
 end
