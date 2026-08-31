@@ -374,14 +374,8 @@ function Arrow:Initialize()
             this.dragging = nil
             return
         end
-        if arg1 == "LeftButton" then
-            QuestBeacon.Navigation:CycleTarget(1)
-            Arrow:SaveTracking()
-            Arrow:Refresh()
-        elseif arg1 == "RightButton" then
-            QuestBeacon.Navigation:SetTrackingMode("auto")
-            Arrow:SaveTracking()
-            Arrow:Refresh(QuestBeacon.Navigation:AutoResolve(false))
+        if arg1 == "RightButton" and IsShiftKeyDown() then
+            Arrow:Reset()
         end
     end)
     frame:SetScript("OnMouseWheel", function()
