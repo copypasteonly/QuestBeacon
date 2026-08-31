@@ -299,6 +299,7 @@ end
 
 function Tracker:Refresh()
     if not self.frame then return end
+    self.frame:SetBackdropColor(0, 0, 0, QuestBeacon.Config:Get("trackerOpacity") / 100)
     local rows = self:GetSortedQuests()
     local size = QuestBeacon.Config:Get("trackerFontSize")
     local contentWidth = math.max(220, self.frame:GetWidth() - 20)
