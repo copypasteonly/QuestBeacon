@@ -667,6 +667,8 @@ function Navigation:PrintStatus()
     QuestBeacon:Print("active quests=" .. table.getn(activeQuests) .. " candidates=" .. table.getn(self:GetCandidates()) .. " mode=" .. tostring(self.trackingMode) .. " cache=" .. QuestBeacon.DB:GetCacheSize())
     QuestBeacon:Print("quest log visible=" .. tostring(questDiagnostics.visibleEntries) .. " expanded=" .. tostring(questDiagnostics.expandedEntries) .. " collapsed=" .. tostring(questDiagnostics.collapsedHeaders) .. " ids=" .. tostring(questDiagnostics.resolvedQuestIDs) .. " primes=" .. tostring(questDiagnostics.primeAttempts or 0) .. " titles=" .. tostring(questDiagnostics.titleRows or 0) .. " source=" .. tostring(questDiagnostics.source or "unknown"))
     QuestBeacon:Print("quest recovery scanned=" .. tostring(questDiagnostics.recoveryScanned or 0) .. " active=" .. tostring(questDiagnostics.recoveryActive or 0) .. " reportedQuests=" .. tostring(questDiagnostics.reportedQuests or 0))
+    QuestBeacon:Print("quest recovery running=" .. tostring(questDiagnostics.recoveryRunning and true or false) ..
+        " headerHooks=" .. tostring(questDiagnostics.hookStatus or "unknown"))
     if QuestBeacon.Scheduler then
         local scheduler = QuestBeacon.Scheduler:GetStats()
         QuestBeacon:Print(string.format("scheduler pending=%d maxQueue=%d maxFrame=%.2fms slowest=%s %.2fms",

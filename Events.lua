@@ -37,26 +37,28 @@ function Coordinator:ProcessFrame()
     end
     if self.questDirty then
         self.questDirty = false
+        local published = true
         if QuestBeacon.QuestService then
-            QuestBeacon.QuestService:Refresh()
-            if QuestBeacon.WatchService then
+            local quests
+            quests, published = QuestBeacon.QuestService:Refresh()
+            if published and QuestBeacon.WatchService then
                 QuestBeacon.WatchService:Refresh(QuestBeacon.QuestService:GetActiveQuests())
             end
-            if QuestBeacon.AvailabilityService then
+            if published and QuestBeacon.AvailabilityService then
                 QuestBeacon.AvailabilityService:ObserveQuestState(QuestBeacon.QuestService:GetActiveQuests())
             end
             local diagnostics = QuestBeacon.QuestService:GetDiagnostics()
-            if diagnostics.resolvedQuestIDs > 0 then
+            if published and diagnostics.resolvedQuestIDs > 0 then
                 self.questSettleUntil = 0
             end
         end
-        if QuestBeacon.Navigation and QuestBeacon.PositionService then
+        if published and QuestBeacon.Navigation and QuestBeacon.PositionService then
             QuestBeacon.Navigation:AutoResolve(self.initialRefresh)
         end
-        if QuestBeacon.Tracker then QuestBeacon.Tracker:Refresh() end
-        if QuestBeacon.WorldMapPins then QuestBeacon.WorldMapPins:Refresh() end
-        if QuestBeacon.MinimapPins then QuestBeacon.MinimapPins:MarkDirty() end
-        self.initialRefresh = false
+        if published and QuestBeacon.Tracker then QuestBeacon.Tracker:Refresh() end
+        if published and QuestBeacon.WorldMapPins then QuestBeacon.WorldMapPins:Refresh() end
+        if published and QuestBeacon.MinimapPins then QuestBeacon.MinimapPins:MarkDirty() end
+        if published then self.initialRefresh = false end
     elseif QuestBeacon.Navigation then
         QuestBeacon.Navigation:CheckAreaChange()
     end
@@ -67,6 +69,7 @@ function Coordinator:OnEvent(eventName, first, second)
         if first == QuestBeacon.NAME then
             if QuestBeacon.Config then QuestBeacon.Config:Initialize() end
             QuestBeacon:Initialize()
+            if QuestBeacon.QuestService then QuestBeacon.QuestService:Initialize() end
             if QuestBeacon.WatchService then QuestBeacon.WatchService:Initialize() end
             if QuestBeacon.QuestHistory then
                 QuestBeacon.QuestHistory:Initialize()
@@ -98,9 +101,6 @@ function Coordinator:OnEvent(eventName, first, second)
         self:StartQuestSettlement()
         self:MarkQuestDirty(true)
     elseif eventName == "QUEST_LOG_UPDATE" or eventName == "UNIT_QUEST_LOG_CHANGED" then
-        if QuestBeacon.QuestService and QuestBeacon.QuestService.scanningHeaders then
-            return
-        end
         self:MarkQuestDirty(true)
     elseif eventName == "BAG_UPDATE" then
         self:MarkQuestDirty(false)
