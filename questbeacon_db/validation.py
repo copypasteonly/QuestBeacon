@@ -13,12 +13,14 @@ from questbeacon_db.schema import SCHEMA_VERSION
 EXPECTED_TABLES = {
     "maps", "areas", "quests", "entities", "entity_clusters", "item_sources",
     "reference_loot_sources", "quest_objective_sources", "quest_starters",
-    "quest_enders", "item_use_targets", "quest_fallback_targets", "quest_prerequisites", "build_metadata",
+    "quest_enders", "item_use_targets", "quest_fallback_targets", "quest_prerequisites",
+    "quest_area_candidates", "build_metadata",
 }
 EXPECTED_INDEXES = {
     "idx_clusters_entry", "idx_clusters_area", "idx_item_sources",
     "idx_reference_sources", "idx_objective_quest", "idx_starters_quest",
     "idx_enders_quest", "idx_fallback_quest", "idx_prerequisites_quest", "idx_quests_eligibility",
+    "idx_area_candidates_area", "idx_area_candidates_quest", "idx_clusters_complete",
 }
 
 
@@ -86,6 +88,28 @@ def validate_database(path: Path) -> ValidationResult:
         ).fetchone()[0]
         if converted_missing:
             errors.append(f"entity_clusters has {converted_missing} converted row(s) without world coordinates")
+
+        invalid_candidates = connection.execute(
+            """SELECT count(*) FROM quest_area_candidates a
+               JOIN entity_clusters c ON c.kind=a.source_kind AND c.entry_id=a.source_id
+                 AND c.cluster_id=a.cluster_id
+               WHERE c.world_x IS NULL OR c.world_y IS NULL
+                 OR a.area_id <> COALESCE(c.mapped_area_id,c.area_id)"""
+        ).fetchone()[0]
+        if invalid_candidates:
+            errors.append(f"quest_area_candidates has {invalid_candidates} invalid cluster mapping(s)")
+        missing_candidates = connection.execute(
+            """SELECT count(*) FROM quest_starters s
+               JOIN entity_clusters c ON c.kind=s.source_kind AND c.entry_id=s.source_id
+               WHERE c.world_x IS NOT NULL AND c.world_y IS NOT NULL AND NOT EXISTS (
+                 SELECT 1 FROM quest_area_candidates a
+                 WHERE a.area_id=COALESCE(c.mapped_area_id,c.area_id)
+                   AND a.quest_id=s.quest_id AND a.source_kind=s.source_kind
+                   AND a.source_id=s.source_id AND a.cluster_id=c.cluster_id
+               )"""
+        ).fetchone()[0]
+        if missing_candidates:
+            errors.append(f"quest_area_candidates is missing {missing_candidates} authored starter cluster(s)")
 
         dangling_objectives = connection.execute(
             """SELECT count(*) FROM quest_objective_sources q

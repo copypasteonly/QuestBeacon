@@ -14,6 +14,8 @@ DB.questIDs = nil
 DB.questCache = {}
 DB.areaCache = {}
 DB.starterMapCache = {}
+DB.candidateAreaCache = {}
+DB.starterAreaCache = {}
 
 local function positiveInteger(value)
     local number = tonumber(value)
@@ -119,6 +121,8 @@ function DB:ClearCache()
     self.questCache = {}
     self.areaCache = {}
     self.starterMapCache = {}
+    self.candidateAreaCache = {}
+    self.starterAreaCache = {}
 end
 
 function DB:GetQuestInfo(questID)
@@ -205,6 +209,78 @@ function DB:GetQuestStarterClustersForMap(mapID)
             isNoise=booleanNumber(row[19]), conversionStatus=row[20], entityName=row[21] })
     end
     self.starterMapCache[id] = results
+    self.cacheSize = self.cacheSize + 1
+    return results, nil
+end
+
+function DB:GetQuestCandidatesForArea(areaID)
+    local id = positiveInteger(areaID)
+    if not id then return nil, "invalid area ID" end
+    if self.candidateAreaCache[id] then return self.candidateAreaCache[id], nil end
+    if not self:Open() then return nil, QuestBeacon.disabledReason end
+    local columns, rows, queryError = self:QueryRaw(
+        "SELECT DISTINCT q.id,q.level,q.min_level,q.race_mask,q.class_mask,q.quest_sort," ..
+        "q.skill_id,q.event_id,q.title_en_us FROM quest_area_candidates a " ..
+        "JOIN quests q ON q.id=a.quest_id WHERE a.area_id=" .. id .. " ORDER BY q.id"
+    )
+    if queryError then return nil, queryError end
+    local results = {}
+    local byQuestID = {}
+    local index
+    for index = 1, table.getn(rows) do
+        local row = rows[index]
+        local candidate = {id=tonumber(row[1]), level=tonumber(row[2]) or 0,
+            minLevel=tonumber(row[3]) or 0, raceMask=tonumber(row[4]) or 255,
+            classMask=tonumber(row[5]) or 0, questSort=nullableNumber(row[6]),
+            skillID=nullableNumber(row[7]), eventID=nullableNumber(row[8]),
+            title=row[9], prerequisites={}}
+        table.insert(results, candidate)
+        byQuestID[candidate.id] = candidate
+    end
+    local prerequisiteColumns, prerequisiteRows, prerequisiteError = self:QueryRaw(
+        "SELECT DISTINCT p.quest_id,p.prerequisite_quest_id,p.ordinal " ..
+        "FROM quest_area_candidates a JOIN quest_prerequisites p ON p.quest_id=a.quest_id " ..
+        "WHERE a.area_id=" .. id .. " ORDER BY p.quest_id,p.ordinal"
+    )
+    if prerequisiteError then return nil, prerequisiteError end
+    for index = 1, table.getn(prerequisiteRows) do
+        local prerequisite = prerequisiteRows[index]
+        local candidate = byQuestID[tonumber(prerequisite[1])]
+        if candidate then table.insert(candidate.prerequisites, tonumber(prerequisite[2])) end
+    end
+    self.candidateAreaCache[id] = results
+    self.cacheSize = self.cacheSize + 1
+    return results, nil
+end
+
+function DB:GetQuestStarterClustersForArea(areaID)
+    local id = positiveInteger(areaID)
+    if not id then return nil, "invalid area ID" end
+    if self.starterAreaCache[id] then return self.starterAreaCache[id], nil end
+    if not self:Open() then return nil, QuestBeacon.disabledReason end
+    local columns, rows, queryError = self:QueryRaw(
+        "SELECT a.quest_id,q.level,q.min_level,q.race_mask,q.class_mask,q.skill_id,q.event_id,q.title_en_us," ..
+        "c.kind,c.entry_id,c.cluster_id,c.area_id,c.mapped_area_id,c.map_id,c.world_x,c.world_y," ..
+        "c.point_count,c.radius,c.is_noise,c.conversion_status,e.name_en_us " ..
+        "FROM quest_area_candidates a JOIN quests q ON q.id=a.quest_id " ..
+        "JOIN entity_clusters c ON c.kind=a.source_kind AND c.entry_id=a.source_id AND c.cluster_id=a.cluster_id " ..
+        "LEFT JOIN entities e ON e.kind=c.kind AND e.entry_id=c.entry_id " ..
+        "WHERE a.area_id=" .. id .. " ORDER BY a.quest_id,c.kind,c.entry_id,c.cluster_id"
+    )
+    if queryError then return nil, queryError end
+    local results = {}
+    local index
+    for index = 1, table.getn(rows) do
+        local row = rows[index]
+        table.insert(results, {questID=tonumber(row[1]), level=tonumber(row[2]) or 0,
+            minLevel=tonumber(row[3]) or 0, raceMask=tonumber(row[4]) or 255,
+            classMask=tonumber(row[5]) or 0, skillID=nullableNumber(row[6]), eventID=nullableNumber(row[7]),
+            title=row[8], kind=tonumber(row[9]), entryID=tonumber(row[10]), clusterID=tonumber(row[11]),
+            areaID=tonumber(row[12]), mappedAreaID=nullableNumber(row[13]), mapID=tonumber(row[14]),
+            x=tonumber(row[15]), y=tonumber(row[16]), pointCount=tonumber(row[17]), radius=tonumber(row[18]),
+            isNoise=booleanNumber(row[19]), conversionStatus=row[20], entityName=row[21]})
+    end
+    self.starterAreaCache[id] = results
     self.cacheSize = self.cacheSize + 1
     return results, nil
 end

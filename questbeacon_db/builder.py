@@ -155,6 +155,25 @@ def _prerequisite_rows(quests: dict[Any, Any]) -> list[tuple[int, int, int]]:
     return rows
 
 
+def _area_candidate_rows(
+    starters: list[tuple[int, int, int]],
+    clusters: list[tuple[Any, ...]],
+) -> list[tuple[int, int, int, int, int]]:
+    clusters_by_entity: dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
+    for row in clusters:
+        kind, entry_id, cluster_id, area_id, mapped_area_id, _, world_x, world_y = row[:8]
+        if world_x is None or world_y is None:
+            continue
+        resolved_area_id = int(mapped_area_id) if mapped_area_id is not None else int(area_id)
+        clusters_by_entity[(int(kind), int(entry_id))].append((resolved_area_id, int(cluster_id)))
+    rows = {
+        (area_id, quest_id, source_kind, source_id, cluster_id)
+        for quest_id, source_kind, source_id in starters
+        for area_id, cluster_id in clusters_by_entity.get((source_kind, source_id), [])
+    }
+    return sorted(rows)
+
+
 def _fallback_rows(
     objectives: list[tuple[int, None, int, int, int]],
     snapshot: PfQuestSnapshot,
@@ -224,6 +243,7 @@ def _write_database(
     ender_rows = _relation_rows(quests, "end")
     fallback_rows = _fallback_rows(objective_rows, snapshot, converter)
     prerequisite_rows = _prerequisite_rows(quests)
+    area_candidate_rows = _area_candidate_rows(starter_rows, cluster_rows)
 
     connection = sqlite3.connect(path)
     try:
@@ -298,6 +318,9 @@ def _write_database(
             _insert_all(connection, "reference_loot_sources", ("reference_id", "source_kind", "source_id"), sorted(set(ref_rows)))
             _insert_all(connection, "quest_objective_sources", ("quest_id", "objective_index", "source_kind", "source_id", "ordinal"), objective_rows)
             _insert_all(connection, "quest_starters", ("quest_id", "source_kind", "source_id"), starter_rows)
+            _insert_all(connection, "quest_area_candidates",
+                        ("area_id", "quest_id", "source_kind", "source_id", "cluster_id"),
+                        area_candidate_rows)
             _insert_all(connection, "quest_enders", ("quest_id", "source_kind", "source_id"), ender_rows)
             use_rows = []
             for item_id, targets in _items(data["quests-itemreq"].get("data", {})):

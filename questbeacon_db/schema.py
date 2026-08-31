@@ -1,9 +1,9 @@
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys=ON;
 PRAGMA application_id=1363298644;
-PRAGMA user_version=3;
+PRAGMA user_version=4;
 
 CREATE TABLE maps (
   id INTEGER PRIMARY KEY,
@@ -95,6 +95,19 @@ CREATE TABLE quest_starters (
   PRIMARY KEY (quest_id, source_kind, source_id),
   FOREIGN KEY (quest_id) REFERENCES quests(id)
 );
+CREATE TABLE quest_area_candidates (
+  area_id INTEGER NOT NULL,
+  quest_id INTEGER NOT NULL,
+  source_kind INTEGER NOT NULL,
+  source_id INTEGER NOT NULL,
+  cluster_id INTEGER NOT NULL,
+  PRIMARY KEY (area_id, quest_id, source_kind, source_id, cluster_id),
+  FOREIGN KEY (area_id) REFERENCES areas(id),
+  FOREIGN KEY (quest_id, source_kind, source_id)
+    REFERENCES quest_starters(quest_id, source_kind, source_id),
+  FOREIGN KEY (source_kind, source_id, cluster_id)
+    REFERENCES entity_clusters(kind, entry_id, cluster_id)
+);
 CREATE TABLE quest_enders (
   quest_id INTEGER NOT NULL,
   source_kind INTEGER NOT NULL,
@@ -134,4 +147,7 @@ CREATE INDEX idx_enders_quest ON quest_enders(quest_id);
 CREATE INDEX idx_fallback_quest ON quest_fallback_targets(quest_id, objective_index);
 CREATE INDEX idx_prerequisites_quest ON quest_prerequisites(quest_id, ordinal);
 CREATE INDEX idx_quests_eligibility ON quests(min_level, race_mask, class_mask);
+CREATE INDEX idx_area_candidates_area ON quest_area_candidates(area_id, quest_id);
+CREATE INDEX idx_area_candidates_quest ON quest_area_candidates(quest_id, area_id);
+CREATE INDEX idx_clusters_complete ON entity_clusters(kind, entry_id, cluster_id);
 """
