@@ -6,5 +6,6 @@ __pycache__/
 pytest-cache-files-*/
 .venv/
 build/
+/tools/Install-QuestBeacon.ps1
 *.db-wal
 *.db-shm
