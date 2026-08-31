@@ -13,12 +13,12 @@ from questbeacon_db.schema import SCHEMA_VERSION
 EXPECTED_TABLES = {
     "maps", "areas", "quests", "entities", "entity_clusters", "item_sources",
     "reference_loot_sources", "quest_objective_sources", "quest_starters",
-    "quest_enders", "item_use_targets", "quest_fallback_targets", "build_metadata",
+    "quest_enders", "item_use_targets", "quest_fallback_targets", "quest_prerequisites", "build_metadata",
 }
 EXPECTED_INDEXES = {
     "idx_clusters_entry", "idx_clusters_area", "idx_item_sources",
     "idx_reference_sources", "idx_objective_quest", "idx_starters_quest",
-    "idx_enders_quest", "idx_fallback_quest",
+    "idx_enders_quest", "idx_fallback_quest", "idx_prerequisites_quest", "idx_quests_eligibility",
 }
 
 

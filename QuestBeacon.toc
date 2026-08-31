@@ -3,11 +3,12 @@
 ## Notes: Quest navigation HUD for OctoWoW
 ## Author: copypasteonly
 ## Version: 0.3.0
-## SavedVariables: QuestBeaconSettings
+## SavedVariables: QuestBeaconSettings, QuestBeaconHistory
 
 Core.lua
 DB.lua
 PositionService.lua
+QuestHistory.lua
 QuestService.lua
 Navigation.lua
 Arrow.lua

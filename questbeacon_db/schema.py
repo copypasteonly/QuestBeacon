@@ -1,9 +1,9 @@
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys=ON;
 PRAGMA application_id=1363298644;
-PRAGMA user_version=2;
+PRAGMA user_version=3;
 
 CREATE TABLE maps (
   id INTEGER PRIMARY KEY,
@@ -28,7 +28,16 @@ CREATE TABLE quests (
   race_mask INTEGER NOT NULL,
   class_mask INTEGER NOT NULL,
   quest_sort INTEGER,
+  skill_id INTEGER,
+  event_id INTEGER,
   title_en_us TEXT
+);
+CREATE TABLE quest_prerequisites (
+  quest_id INTEGER NOT NULL,
+  prerequisite_quest_id INTEGER NOT NULL,
+  ordinal INTEGER NOT NULL,
+  PRIMARY KEY (quest_id, prerequisite_quest_id),
+  FOREIGN KEY (quest_id) REFERENCES quests(id)
 );
 CREATE TABLE entities (
   kind INTEGER NOT NULL,
@@ -123,4 +132,6 @@ CREATE INDEX idx_objective_quest ON quest_objective_sources(quest_id);
 CREATE INDEX idx_starters_quest ON quest_starters(quest_id);
 CREATE INDEX idx_enders_quest ON quest_enders(quest_id);
 CREATE INDEX idx_fallback_quest ON quest_fallback_targets(quest_id, objective_index);
+CREATE INDEX idx_prerequisites_quest ON quest_prerequisites(quest_id, ordinal);
+CREATE INDEX idx_quests_eligibility ON quests(min_level, race_mask, class_mask);
 """

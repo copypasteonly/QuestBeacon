@@ -133,6 +133,28 @@ def _objective_rows(quests: dict[Any, Any]) -> list[tuple[int, None, int, int, i
     return rows
 
 
+def _prerequisite_rows(quests: dict[Any, Any]) -> list[tuple[int, int, int]]:
+    rows: list[tuple[int, int, int]] = []
+    for quest_id, quest in _items(quests):
+        if not isinstance(quest, dict):
+            continue
+        prerequisites = quest.get("pre")
+        values = _values(prerequisites) if isinstance(prerequisites, dict) else [prerequisites]
+        ordinal = 0
+        seen: set[int] = set()
+        for value in values:
+            try:
+                prerequisite_id = abs(int(value))
+            except (TypeError, ValueError):
+                continue
+            if prerequisite_id <= 0 or prerequisite_id in seen:
+                continue
+            ordinal += 1
+            seen.add(prerequisite_id)
+            rows.append((int(quest_id), prerequisite_id, ordinal))
+    return rows
+
+
 def _fallback_rows(
     objectives: list[tuple[int, None, int, int, int]],
     snapshot: PfQuestSnapshot,
@@ -201,6 +223,7 @@ def _write_database(
     starter_rows = _relation_rows(quests, "start")
     ender_rows = _relation_rows(quests, "end")
     fallback_rows = _fallback_rows(objective_rows, snapshot, converter)
+    prerequisite_rows = _prerequisite_rows(quests)
 
     connection = sqlite3.connect(path)
     try:
@@ -224,10 +247,13 @@ def _write_database(
                                   chosen.loc_bottom if chosen else None, status))
             _insert_all(connection, "areas", ("id", "map_id", "parent_area_id", "name_en_us", "world_map_area_id",
                         "loc_left", "loc_right", "loc_top", "loc_bottom", "mapping_status"), area_rows)
-            _insert_all(connection, "quests", ("id", "level", "min_level", "race_mask", "class_mask", "quest_sort", "title_en_us"),
+            _insert_all(connection, "quests", ("id", "level", "min_level", "race_mask", "class_mask", "quest_sort", "skill_id", "event_id", "title_en_us"),
                         ((int(qid), int(q.get("lvl", 0)), int(q.get("min", 0)), int(q.get("race", 255)),
-                          int(q.get("class", 0)), int(q.get("sort", 0)) or None, _title(quest_locale, int(qid)))
+                          int(q.get("class", 0)), int(q.get("sort", 0)) or None,
+                          int(q.get("skill", 0)) or None, int(q.get("event", 0)) or None,
+                          _title(quest_locale, int(qid)))
                          for qid, q in _items(quests) if isinstance(q, dict)))
+            _insert_all(connection, "quest_prerequisites", ("quest_id", "prerequisite_quest_id", "ordinal"), prerequisite_rows)
             entities = []
             referenced_entities = {
                 (kind, source_id)
@@ -298,6 +324,7 @@ def _write_database(
     return {
         "database": str(path), "schema_version": SCHEMA_VERSION,
         "counts": {"quests": len(quests), "clusters": len(cluster_rows), "objectives": len(objective_rows),
-                   "starters": len(starter_rows), "enders": len(ender_rows), "fallbacks": len(fallback_rows)},
+                   "starters": len(starter_rows), "enders": len(ender_rows), "fallbacks": len(fallback_rows),
+                   "prerequisites": len(prerequisite_rows)},
         "coordinates": dict(sorted(conversion_stats.items())), "source_commits": snapshot.commits,
     }

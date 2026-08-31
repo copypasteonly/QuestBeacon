@@ -2,7 +2,7 @@ QuestBeacon = QuestBeacon or {}
 
 QuestBeacon.NAME = "QuestBeacon"
 QuestBeacon.VERSION = "0.3.0"
-QuestBeacon.SCHEMA_VERSION = 2
+QuestBeacon.SCHEMA_VERSION = 3
 QuestBeacon.enabled = false
 QuestBeacon.disabledReason = nil
 QuestBeacon.errorPrinted = false
