@@ -721,10 +721,13 @@ SlashCmdList["QUESTBEACON"] = function(message)
     if not watchQuest then
         watchStart, watchEnd, watchAction, watchQuest = string.find(command, "^(watch)%s+(%d+)$")
     end
-    if watchQuest and QuestBeacon.Tracker then
+    if watchQuest and QuestBeacon.WatchService then
         local watched = watchAction == "watch"
-        if QuestBeacon.Tracker:SetWatched(tonumber(watchQuest), watched) then
+        local ok, reason = QuestBeacon.WatchService:SetWatched(tonumber(watchQuest), watched)
+        if ok then
             QuestBeacon:Print((watched and "watching quest " or "stopped watching quest ") .. tostring(watchQuest))
+        else
+            QuestBeacon:Print("watch failed: " .. tostring(reason))
         end
         return
     end
@@ -732,16 +735,20 @@ SlashCmdList["QUESTBEACON"] = function(message)
         QuestBeacon.Tracker:WatchAll()
         QuestBeacon:Print("watching all active quests")
         return
-    elseif command == "watch" and QuestBeacon.Tracker then
-        local hidden = QuestBeacon.Tracker:GetHiddenActiveQuests()
-        if table.getn(hidden) == 0 then
-            QuestBeacon:Print("no hidden active quests")
-        else
-            local hiddenIndex
-            for hiddenIndex = 1, table.getn(hidden) do
-                QuestBeacon:Print("hidden quest " .. tostring(hidden[hiddenIndex].id) .. " - " .. tostring(hidden[hiddenIndex].title))
+    elseif command == "watched" and QuestBeacon.WatchService then
+        local active = QuestBeacon.QuestService:GetActiveQuests()
+        local watchedCount = 0
+        local hiddenIndex
+        for hiddenIndex = 1, table.getn(active) do
+            if QuestBeacon.WatchService:IsWatched(active[hiddenIndex]) then
+                watchedCount = watchedCount + 1
+                QuestBeacon:Print("watched quest " .. tostring(active[hiddenIndex].id) .. " - " .. tostring(active[hiddenIndex].title))
             end
-            QuestBeacon:Print("use /qbeacon watch questID or watch all")
+        end
+        if watchedCount == 0 then
+            QuestBeacon:Print("no watched active quests")
+        else
+            QuestBeacon:Print(tostring(watchedCount) .. " watched active quest(s)")
         end
         return
     end

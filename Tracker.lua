@@ -25,7 +25,7 @@ local function activeCandidateDistance(questID)
 end
 
 local function before(first, second)
-    if first.starred ~= second.starred then return first.starred end
+    if first.watched ~= second.watched then return first.watched end
     if QuestBeacon.Config:Get("questSort") == "level" then
         if first.quest.level ~= second.quest.level then return first.quest.level > second.quest.level end
     else
@@ -37,15 +37,11 @@ end
 
 function Tracker:GetSortedQuests()
     local active = QuestBeacon.QuestService:GetActiveQuests()
-    local starred = QuestBeacon.Config:Get("starredQuests")
-    local hidden = QuestBeacon.Config:Get("hiddenQuests")
     local rows = {}
     local index
     for index = 1, table.getn(active) do
-        if not hidden[active[index].id] then
-            table.insert(rows, {quest=active[index], starred=starred[active[index].id] and true or false,
-                distance=activeCandidateDistance(active[index].id) or 999999999999})
-        end
+        table.insert(rows, {quest=active[index], watched=QuestBeacon.WatchService:IsWatched(active[index]),
+            distance=activeCandidateDistance(active[index].id) or 999999999999})
     end
     table.sort(rows, before)
     return rows
@@ -115,38 +111,32 @@ function Tracker:Select(questID, objectiveIndex)
 end
 
 function Tracker:ToggleStar(questID)
-    local starred = QuestBeacon.Config:Get("starredQuests")
-    starred[questID] = starred[questID] and nil or true
-    QuestBeacon.Config:Set("starredQuests", starred)
+    local quest = QuestBeacon.QuestService:GetQuest(questID)
+    if quest then QuestBeacon.WatchService:SetWatched(questID, not QuestBeacon.WatchService:IsWatched(quest)) end
 end
 
 function Tracker:SetWatched(questID, watched)
-    local id = tonumber(questID)
-    if not id or id <= 0 or math.floor(id) ~= id then return false end
-    local hidden = QuestBeacon.Config:Get("hiddenQuests")
-    hidden[id] = watched and nil or true
-    QuestBeacon.Config:Set("hiddenQuests", hidden)
-    return true
+    return QuestBeacon.WatchService:SetWatched(questID, watched)
 end
 
 function Tracker:IsWatched(questID)
-    local hidden = QuestBeacon.Config:Get("hiddenQuests")
-    return not hidden[tonumber(questID)]
+    return QuestBeacon.WatchService:IsWatched(QuestBeacon.QuestService:GetQuest(questID))
 end
 
 function Tracker:GetHiddenActiveQuests()
-    local hidden = QuestBeacon.Config:Get("hiddenQuests")
     local active = QuestBeacon.QuestService:GetActiveQuests()
     local result = {}
     local index
     for index = 1, table.getn(active) do
-        if hidden[active[index].id] then table.insert(result, active[index]) end
+        if not QuestBeacon.WatchService:IsWatched(active[index]) then table.insert(result, active[index]) end
     end
     return result
 end
 
 function Tracker:WatchAll()
-    QuestBeacon.Config:Set("hiddenQuests", {})
+    local active = QuestBeacon.QuestService:GetActiveQuests()
+    local index
+    for index = 1, table.getn(active) do QuestBeacon.WatchService:SetWatched(active[index].id, true) end
 end
 
 function Tracker:SavePosition()
@@ -175,8 +165,8 @@ function Tracker:Refresh()
         row.questID = quest.id row.star.questID = quest.id row.unwatch.questID = quest.id
         row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
         row.title:SetText("[" .. tostring(quest.level or 0) .. "] " .. tostring(quest.title or ("Quest " .. quest.id)))
-        row.star.text:SetText(model.starred and "*" or "+")
-        if model.starred then row.star.text:SetTextColor(1, 0.82, 0, 1)
+        row.star.text:SetText(model.watched and "*" or "+")
+        if model.watched then row.star.text:SetTextColor(1, 0.82, 0, 1)
         else row.star.text:SetTextColor(0.5, 0.5, 0.5, 1) end
         setFontSize(row.title, size + 1) setFontSize(row.star.text, size + 1)
         setFontSize(row.unwatch.text, size)
@@ -203,7 +193,13 @@ function Tracker:Refresh()
     for index = questRowIndex + 1, table.getn(self.questRows) do self.questRows[index]:Hide() end
     for index = objectiveRowIndex + 1, table.getn(self.objectiveRows) do self.objectiveRows[index]:Hide() end
     self.content:SetHeight(math.max(20, -y)) self.frame:SetHeight(math.max(45, -y + 35))
-    if QuestBeacon.Config:Get("trackerShown") then self.frame:Show() else self.frame:Hide() end
+    if QuestBeacon.Config:Get("trackerShown") then
+        self.frame:Show()
+        if QuestBeacon.WatchService then QuestBeacon.WatchService:HideNativeTracker() end
+    else
+        self.frame:Hide()
+        if QuestBeacon.WatchService then QuestBeacon.WatchService:RestoreNativeTracker() end
+    end
 end
 
 function Tracker:OnConfigChanged(path)

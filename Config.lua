@@ -3,11 +3,14 @@ local Config = QuestBeacon.Config
 
 Config.listeners = {}
 Config.defaults = {
+    configVersion = 2,
     point = "CENTER", x = 0, y = -100, scale = 1, shown = true,
     trackingMode = "auto", arrowFontSize = 12,
     trackerShown = true, trackerLocked = false, trackerFontSize = 12,
     trackerPoint = "TOPRIGHT", trackerX = -30, trackerY = -180,
-    questSort = "distance", starredQuests = {}, hiddenQuests = {},
+    questSort = "distance", watchedQuests = {}, watchOverrides = {},
+    trackerView = "all", replaceNativeTracker = true,
+    trackerShowLevels = true, trackerExpandObjectives = false,
     worldMap = { objectives=true, itemSources=true, turnIns=true, available=true },
     minimap = { objectives=true, itemSources=true, turnIns=true, available=true },
     availability = { lowLevel=false, highLevel=false, event=false },
@@ -39,10 +42,33 @@ end
 
 function Config:Initialize()
     if type(QuestBeaconSettings) ~= "table" then QuestBeaconSettings = {} end
+    if (tonumber(QuestBeaconSettings.configVersion) or 0) < 2 then
+        local migrated = {}
+        local pending = {}
+        local questID, enabled
+        if type(QuestBeaconSettings.starredQuests) == "table" then
+            for questID, enabled in pairs(QuestBeaconSettings.starredQuests) do
+                if enabled then migrated[tonumber(questID) or questID] = true pending[tonumber(questID) or questID] = true end
+            end
+        end
+        if type(QuestBeaconSettings.hiddenQuests) == "table" then
+            for questID, enabled in pairs(QuestBeaconSettings.hiddenQuests) do
+                if enabled then migrated[tonumber(questID) or questID] = false pending[tonumber(questID) or questID] = true end
+            end
+        end
+        QuestBeaconSettings.watchedQuests = migrated
+        QuestBeaconSettings.watchOverrides = pending
+        QuestBeaconSettings.starredQuests = nil
+        QuestBeaconSettings.hiddenQuests = nil
+        QuestBeaconSettings.configVersion = 2
+    end
     fill(QuestBeaconSettings, self.defaults)
     QuestBeaconSettings.arrowFontSize = math.max(8, math.min(24, tonumber(QuestBeaconSettings.arrowFontSize) or 12))
     QuestBeaconSettings.trackerFontSize = math.max(8, math.min(20, tonumber(QuestBeaconSettings.trackerFontSize) or 12))
     if QuestBeaconSettings.questSort ~= "level" then QuestBeaconSettings.questSort = "distance" end
+    if QuestBeaconSettings.trackerView ~= "watched" and QuestBeaconSettings.trackerView ~= "zone" then
+        QuestBeaconSettings.trackerView = "all"
+    end
     return QuestBeaconSettings
 end
 

@@ -39,6 +39,9 @@ function Coordinator:ProcessFrame()
         self.questDirty = false
         if QuestBeacon.QuestService then
             QuestBeacon.QuestService:Refresh()
+            if QuestBeacon.WatchService then
+                QuestBeacon.WatchService:Refresh(QuestBeacon.QuestService:GetActiveQuests())
+            end
             local diagnostics = QuestBeacon.QuestService:GetDiagnostics()
             if diagnostics.resolvedQuestIDs > 0 then
                 self.questSettleUntil = 0
@@ -61,6 +64,7 @@ function Coordinator:OnEvent(eventName, first, second)
         if first == QuestBeacon.NAME then
             if QuestBeacon.Config then QuestBeacon.Config:Initialize() end
             QuestBeacon:Initialize()
+            if QuestBeacon.WatchService then QuestBeacon.WatchService:Initialize() end
             if QuestBeacon.QuestHistory then
                 QuestBeacon.QuestHistory:Initialize()
             end
