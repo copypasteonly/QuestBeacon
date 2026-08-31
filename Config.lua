@@ -33,7 +33,7 @@ local function fill(target, defaults)
 end
 
 local function split(path)
-    local first, second = string.match(path or "", "^([^.]+)%.?([^.]*)$")
+    local startPosition, endPosition, first, second = string.find(path or "", "^([^.]+)%.?([^.]*)$")
     return first, second ~= "" and second or nil
 end
 

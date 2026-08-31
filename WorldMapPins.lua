@@ -64,7 +64,7 @@ function Renderer:Refresh()
     if not WorldMapButton or not WorldMapFrame or not WorldMapFrame:IsVisible() then return end
     local areaID = self:GetViewedAreaID()
     local area = areaID and QuestBeacon.DB:GetArea(areaID) or nil
-    local pins = QuestBeacon.PinService:Rebuild(areaID)
+    local pins = QuestBeacon.PinService:Rebuild(areaID, "world")
     local width, height = WorldMapButton:GetWidth(), WorldMapButton:GetHeight()
     local shown = 0
     local index
@@ -86,8 +86,11 @@ end
 
 function Renderer:Initialize()
     if self.frame then return end
+    if not WorldMapButton then return end
     self.frame = CreateFrame("Frame", nil, WorldMapButton)
     self.frame:RegisterEvent("WORLD_MAP_UPDATE")
+    self.frame:RegisterEvent("PLAYER_LEVEL_UP")
+    self.frame:RegisterEvent("SKILL_LINES_CHANGED")
     self.frame:SetScript("OnEvent", function() Renderer:Refresh() end)
     QuestBeacon.Config:RegisterListener(self, function(owner, path)
         if string.find(path, "^worldMap") or string.find(path, "^availability") or path == "reset" then owner:Refresh() end

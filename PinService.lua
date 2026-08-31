@@ -149,7 +149,7 @@ function Pins:AddAvailablePins(result, seen, mapID, active)
     end
 end
 
-function Pins:Rebuild(areaID)
+function Pins:Rebuild(areaID, destination)
     local result, seen = {}, {}
     local active = activeSet()
     local quests = QuestBeacon.QuestService:GetActiveQuests()
@@ -168,7 +168,10 @@ function Pins:Rebuild(areaID)
         if a.entryID ~= b.entryID then return a.entryID < b.entryID end
         return (a.clusterID or 0) < (b.clusterID or 0)
     end)
-    self.worldPins = result self.minimapPins = result self.lastAreaID = areaID
+    if destination == "world" then self.worldPins = result
+    elseif destination == "minimap" then self.minimapPins = result
+    else self.worldPins = result self.minimapPins = result end
+    self.lastAreaID = areaID
     return result
 end
 

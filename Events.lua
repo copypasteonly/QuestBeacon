@@ -49,6 +49,7 @@ function Coordinator:ProcessFrame()
         end
         if QuestBeacon.Tracker then QuestBeacon.Tracker:Refresh() end
         if QuestBeacon.WorldMapPins then QuestBeacon.WorldMapPins:Refresh() end
+        if QuestBeacon.MinimapPins then QuestBeacon.MinimapPins:MarkDirty() end
         self.initialRefresh = false
     elseif QuestBeacon.Navigation then
         QuestBeacon.Navigation:CheckAreaChange()
@@ -69,6 +70,7 @@ function Coordinator:OnEvent(eventName, first, second)
             if QuestBeacon.Settings then QuestBeacon.Settings:Initialize() end
             if QuestBeacon.Tracker then QuestBeacon.Tracker:Initialize() end
             if QuestBeacon.WorldMapPins then QuestBeacon.WorldMapPins:Initialize() end
+            if QuestBeacon.MinimapPins then QuestBeacon.MinimapPins:Initialize() end
         end
         return
     end

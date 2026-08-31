@@ -591,8 +591,18 @@ function Navigation:AutoResolve(initial)
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     local state
     if self.trackingMode == "pin" and self.pinnedTarget then
-        state = {available=true, player=player, target=self.pinnedTarget, candidates={self.pinnedTarget}, reasons={}}
-        self.state = state
+        local pinQuest = QuestBeacon.QuestService:GetQuest(self.pinnedTarget.quest.id)
+        local pinInvalid = self.pinnedTarget.role == "available" and
+            (pinQuest ~= nil or QuestBeacon.QuestHistory:IsComplete(self.pinnedTarget.quest.id))
+        if self.pinnedTarget.role ~= "available" and not pinQuest then pinInvalid = true end
+        if pinInvalid then
+            self.trackingMode = "auto"
+            self.pinnedTarget = nil
+            state = self:Resolve(QuestBeacon.QuestService:GetActiveQuests(), player, nil)
+        else
+            state = {available=true, player=player, target=self.pinnedTarget, candidates={self.pinnedTarget}, reasons={}}
+            self.state = state
+        end
     else
         state = self:Resolve(QuestBeacon.QuestService:GetActiveQuests(), player, nil)
     end

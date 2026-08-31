@@ -2,6 +2,12 @@ QuestBeacon.Settings = QuestBeacon.Settings or {}
 local Settings = QuestBeacon.Settings
 
 Settings.rows = {}
+Settings.controlCount = 0
+
+function Settings:ControlName(kind)
+    self.controlCount = self.controlCount + 1
+    return "QuestBeaconSettings" .. kind .. tostring(self.controlCount)
+end
 
 local function setText(font, text)
     if font then font:SetText(text) end
@@ -19,7 +25,7 @@ function Settings:CreateLabel(parent, text, x, y, size)
 end
 
 function Settings:CreateCheck(parent, label, path, x, y)
-    local button = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    local button = CreateFrame("CheckButton", self:ControlName("Check"), parent, "UICheckButtonTemplate")
     button:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     local text = self:CreateLabel(parent, label, x + 26, y - 5, 11)
     button.path = path
@@ -33,7 +39,7 @@ end
 
 function Settings:CreateSlider(parent, label, path, minimum, maximum, x, y)
     self:CreateLabel(parent, label, x, y, 11)
-    local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
+    local slider = CreateFrame("Slider", self:ControlName("Slider"), parent, "OptionsSliderTemplate")
     slider:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y - 18)
     slider:SetWidth(170)
     slider:SetMinMaxValues(minimum, maximum)
@@ -50,7 +56,7 @@ function Settings:CreateSlider(parent, label, path, minimum, maximum, x, y)
 end
 
 function Settings:CreateButton(parent, label, x, y, width, callback)
-    local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    local button = CreateFrame("Button", self:ControlName("Button"), parent, "UIPanelButtonTemplate")
     button:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     button:SetWidth(width or 110)
     button:SetHeight(22)
