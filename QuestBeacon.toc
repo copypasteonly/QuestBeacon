@@ -6,10 +6,12 @@
 ## SavedVariables: QuestBeaconSettings, QuestBeaconHistory
 
 Core.lua
+Config.lua
 DB.lua
 PositionService.lua
 QuestHistory.lua
 QuestService.lua
 Navigation.lua
 Arrow.lua
+Settings.lua
 Events.lua

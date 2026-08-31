@@ -146,6 +146,25 @@ function Arrow:ApplyScale(showIndicator)
     end
 end
 
+function Arrow:ApplyFontSize()
+    local size = QuestBeacon.Config and QuestBeacon.Config:Get("arrowFontSize") or 12
+    local fonts = {{self.title, size + 1}, {self.description, size}, {self.distance, math.max(8, size - 1)}}
+    local index
+    for index = 1, table.getn(fonts) do
+        local font = fonts[index][1]
+        if font and font.GetFont and font.SetFont then
+            local path, oldSize, flags = font:GetFont()
+            if path then font:SetFont(path, fonts[index][2], flags) end
+        end
+    end
+end
+
+function Arrow:OnConfigChanged(path)
+    if path == "arrowFontSize" or path == "reset" then self:ApplyFontSize() end
+    if path == "shown" or path == "reset" then self:Refresh() end
+    if path == "reset" then self:ApplyPosition() self:ApplyScale(false) end
+end
+
 function Arrow:SavePosition()
     local point, relativeTo, relativePoint, x, y = self.frame:GetPoint(1)
     local settings = self:EnsureSettings()
@@ -301,8 +320,10 @@ function Arrow:OnAddonLoaded()
     self:EnsureSettings()
     self:ApplyPosition()
     self:ApplyScale(false)
+    self:ApplyFontSize()
     self:RestoreTracking()
     self:Refresh()
+    if QuestBeacon.Config then QuestBeacon.Config:RegisterListener(self, self.OnConfigChanged) end
 end
 
 function Arrow:Initialize()

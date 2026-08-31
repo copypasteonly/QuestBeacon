@@ -672,6 +672,9 @@ SlashCmdList["QUESTBEACON"] = function(message)
     elseif command == "reset" and QuestBeacon.Arrow then
         QuestBeacon.Arrow:Reset()
         return
+    elseif command == "settings" and QuestBeacon.Settings then
+        QuestBeacon.Settings:Toggle()
+        return
     elseif command == "auto" then
         Navigation:SetTrackingMode("auto")
         Navigation:PrintProof(Navigation:ResolveCurrent(nil), false)
@@ -702,7 +705,7 @@ SlashCmdList["QUESTBEACON"] = function(message)
         if capturedID then
             questFilter = tonumber(capturedID)
         else
-            QuestBeacon:Print("usage: /qbeacon status | proof [questID] | auto | next | prev | track questID [objective] | show | hide | reset")
+            QuestBeacon:Print("usage: /qbeacon status | proof [questID] | auto | next | prev | track questID [objective] | show | hide | reset | settings")
             return
         end
     end
