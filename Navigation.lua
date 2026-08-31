@@ -59,7 +59,7 @@ local function candidateBefore(first, second)
         return true
     end
     local keys = {
-        "areaRank", "useRank", "noiseRank", "vendorRank", "rateRank", "sourceRank",
+        "watchRank", "areaRank", "useRank", "noiseRank", "vendorRank", "rateRank", "sourceRank",
         "distanceSquared", "questLogIndex", "objectiveIndex", "questID", "entryID", "clusterID",
     }
     local index
@@ -128,6 +128,7 @@ function Navigation:BuildCandidate(quest, objective, cluster, player, source)
         sourceType = source.sourceType or "entity",
         provenance = source.provenance,
         effectiveRate = source.effectiveRate or 100,
+        watchRank = QuestBeacon.WatchService and QuestBeacon.WatchService:IsWatched(quest) and 0 or 1,
         areaRank = areaRank(player, cluster),
         useRank = source.useRank or 1,
         noiseRank = cluster.isNoise and 1 or 0,
