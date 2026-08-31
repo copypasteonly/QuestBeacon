@@ -11,6 +11,7 @@ Config.defaults = {
     questSort = "distance", watchedQuests = {}, watchOverrides = {},
     trackerView = "all", replaceNativeTracker = true,
     trackerShowLevels = true, trackerExpandObjectives = false,
+    trackerFolds = {},
     worldMap = { objectives=true, itemSources=true, turnIns=true, available=true },
     minimap = { objectives=true, itemSources=true, turnIns=true, available=true },
     availability = { lowLevel=false, highLevel=false, event=false },
@@ -107,8 +108,12 @@ end
 
 function Config:ResetUI()
     local trackingMode = QuestBeaconSettings and QuestBeaconSettings.trackingMode
+    local watchedQuests = QuestBeaconSettings and QuestBeaconSettings.watchedQuests or {}
+    local watchOverrides = QuestBeaconSettings and QuestBeaconSettings.watchOverrides or {}
     QuestBeaconSettings = copy(self.defaults)
     QuestBeaconSettings.trackingMode = trackingMode == "quest" and "quest" or "auto"
+    QuestBeaconSettings.watchedQuests = watchedQuests
+    QuestBeaconSettings.watchOverrides = watchOverrides
     self:Notify("reset", true)
 end
 

@@ -81,6 +81,10 @@ function Settings:Refresh()
     if self.sortButton then
         self.sortButton:SetText("Sort: " .. (QuestBeacon.Config:Get("questSort") == "level" and "Level" or "Distance"))
     end
+    if self.viewButton then
+        local view = QuestBeacon.Config:Get("trackerView")
+        self.viewButton:SetText("View: " .. (view == "zone" and "Current Zone" or view == "watched" and "Watched Only" or "All Quests"))
+    end
     self.refreshing = false
 end
 
@@ -117,6 +121,13 @@ function Settings:Initialize()
         QuestBeacon.Config:Set("questSort", current == "distance" and "level" or "distance")
         Settings:Refresh()
     end)
+    self.viewButton = self:CreateButton(frame, "View: All Quests", 25, -330, 170, function()
+        QuestBeacon.Tracker:CycleView()
+        Settings:Refresh()
+    end)
+    self:CreateCheck(frame, "Replace native tracker", "replaceNativeTracker", 25, -362)
+    self:CreateCheck(frame, "Show quest levels", "trackerShowLevels", 25, -392)
+    self:CreateCheck(frame, "Unfold objectives by default", "trackerExpandObjectives", 25, -422)
 
     local groups = {{"World Map", "worldMap", 220}, {"Minimap", "minimap", 415}}
     local groupIndex

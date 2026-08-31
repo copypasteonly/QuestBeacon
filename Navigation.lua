@@ -732,8 +732,9 @@ SlashCmdList["QUESTBEACON"] = function(message)
         return
     end
     if command == "watch all" and QuestBeacon.Tracker then
-        QuestBeacon.Tracker:WatchAll()
-        QuestBeacon:Print("watching all active quests")
+        local failures = QuestBeacon.Tracker:WatchAll()
+        if failures == 0 then QuestBeacon:Print("watching all active quests")
+        else QuestBeacon:Print(tostring(failures) .. " quest watch request(s) failed") end
         return
     elseif command == "watched" and QuestBeacon.WatchService then
         local active = QuestBeacon.QuestService:GetActiveQuests()

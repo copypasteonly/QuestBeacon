@@ -3,6 +3,32 @@ local Renderer = QuestBeacon.WorldMapPins
 
 Renderer.pool = {}
 
+local function normalizedName(value)
+    return string.lower(string.gsub(value or "", "[^%w]", ""))
+end
+
+function Renderer:OpenArea(areaID)
+    local area = areaID and QuestBeacon.DB:GetArea(areaID) or nil
+    if not area then return false end
+    if type(ToggleWorldMap) == "function" and WorldMapFrame and not WorldMapFrame:IsVisible() then ToggleWorldMap() end
+    if type(GetMapContinents) ~= "function" or type(GetMapZones) ~= "function" or type(SetMapZoom) ~= "function" then return false end
+    local wanted = normalizedName(area.name)
+    local continents = {GetMapContinents()}
+    local continentIndex
+    for continentIndex = 1, table.getn(continents) do
+        local zones = {GetMapZones(continentIndex)}
+        local zoneIndex
+        for zoneIndex = 1, table.getn(zones) do
+            if normalizedName(zones[zoneIndex]) == wanted then
+                SetMapZoom(continentIndex, zoneIndex)
+                self:Refresh()
+                return true
+            end
+        end
+    end
+    return false
+end
+
 function Renderer:GetViewedAreaID()
     if not C_Map or type(C_Map.GetMapAreaIDs) ~= "function" or type(GetMapInfo) ~= "function" then return nil end
     local directory = GetMapInfo()

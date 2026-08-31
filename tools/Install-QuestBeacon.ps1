@@ -34,7 +34,11 @@ $runtimeAssets = @(
     'img\cluster_item.tga',
     'img\cluster_misc.tga',
     'img\available.tga',
-    'img\complete.tga'
+    'img\complete.tga',
+    'img\tracker_quests.tga',
+    'img\tracker_settings.tga',
+    'img\tracker_close.tga',
+    'img\track.tga'
 )
 $manifest = @('QuestBeacon.toc') + $modulePaths + $runtimeAssets + @('db\questbeacon.db')
 foreach ($relativePath in $manifest) {
