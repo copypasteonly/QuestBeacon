@@ -9,6 +9,7 @@ local BUCKET_SIZE = 500
 
 local OUTDOOR_ZOOM = {[0]=300,[1]=240,[2]=180,[3]=120,[4]=80,[5]=50}
 local INDOOR_ZOOM = {[0]=466.6666667,[1]=400,[2]=333.3333333,[3]=266.3333333,[4]=200,[5]=133.3333333}
+local REFERENCE_ZOOM_YARDS = 120
 
 local function safeGetCVar(name)
     if type(GetCVar) ~= "function" then return nil end
@@ -27,6 +28,26 @@ function Renderer:GetZoomYards()
         indoor = inside == zoom and inside ~= outside
     end
     return (indoor and INDOOR_ZOOM or OUTDOOR_ZOOM)[zoom] or 300
+end
+
+function Renderer:GetPinSize(pin, zoomYards)
+    local cluster = pin and string.find(pin.texture or "", "^cluster_") ~= nil
+    local referenceSize = cluster and 18 or 14
+    local minimum = cluster and 10 or 9
+    local maximum = cluster and 28 or 22
+    local size = referenceSize * REFERENCE_ZOOM_YARDS / (tonumber(zoomYards) or REFERENCE_ZOOM_YARDS)
+    return math.floor(math.max(minimum, math.min(maximum, size)) + 0.5)
+end
+
+function Renderer:ApplyPinSize(frame, pin, zoomYards, pinChanged)
+    if not pinChanged and frame.sizeZoomYards == zoomYards then return end
+    local size = self:GetPinSize(pin, zoomYards)
+    if frame.pinSize ~= size then
+        frame:SetWidth(size)
+        frame:SetHeight(size)
+        frame.pinSize = size
+    end
+    frame.sizeZoomYards = zoomYards
 end
 
 function Renderer:GetPin(index)
@@ -93,10 +114,12 @@ function Renderer:RenderPin(pin, player, settings, width, height, zoomYards, rad
     if x * x + y * y > radius * radius then return shown end
     shown = shown + 1
     local frame = self:GetPin(shown)
-    if frame.pin ~= pin then
+    local pinChanged = frame.pin ~= pin
+    if pinChanged then
         frame.pin = pin
         frame.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. pin.texture)
     end
+    self:ApplyPinSize(frame, pin, zoomYards, pinChanged)
     frame:ClearAllPoints()
     frame:SetPoint("CENTER", Minimap, "CENTER", x, y)
     frame:Show()
@@ -114,8 +137,9 @@ function Renderer:RefreshPositions()
     if self.dirty then self:RefreshData() end
     local now = type(GetTime) == "function" and GetTime() or 0
     local facing = self.rotateMinimap and (player.facing or 0) or 0
+    local zoomYards = self.zoomYards or self:GetZoomYards()
     local unchanged = not dataChanged and self.lastX == player.x and self.lastY == player.y and
-        self.lastMapID == player.mapID and self.lastFacing == facing
+        self.lastMapID == player.mapID and self.lastFacing == facing and self.lastZoomYards == zoomYards
     -- Movement stays frame-smooth; while standing still we only do the
     -- occasional safety refresh, matching pfQuest's minimap update behavior.
     if unchanged and now < (self.nextForcedRefresh or 0) then return end
@@ -123,9 +147,9 @@ function Renderer:RefreshPositions()
     self.lastY = player.y
     self.lastMapID = player.mapID
     self.lastFacing = facing
+    self.lastZoomYards = zoomYards
     self.nextForcedRefresh = now + 1
     local width, height = Minimap:GetWidth(), Minimap:GetHeight()
-    local zoomYards = self.zoomYards or self:GetZoomYards()
     local radius = math.min(width, height) / 2 - 10
     local cosine, sine = math.cos(facing), math.sin(facing)
     local settings = QuestBeacon.Config:Get("minimap")
@@ -159,6 +183,12 @@ function Renderer:MarkDirty()
     self.dirty = true
 end
 
+function Renderer:RefreshZoom()
+    self.zoomYards = self:GetZoomYards()
+    self.nextForcedRefresh = 0
+    self:RefreshPositions()
+end
+
 function Renderer:Initialize()
     if self.frame then return end
     if not Minimap then return end
@@ -168,7 +198,16 @@ function Renderer:Initialize()
     self.frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
     self.frame:RegisterEvent("PLAYER_LEVEL_UP")
     self.frame:RegisterEvent("SKILL_LINES_CHANGED")
-    self.frame:SetScript("OnEvent", function() Renderer:MarkDirty() Renderer:RefreshPositions() end)
+    self.frame:SetScript("OnEvent", function()
+        if event == "MINIMAP_UPDATE_ZOOM" then
+            -- Zoom changes only affect projection and hitbox size. Pin data and
+            -- its spatial buckets remain valid, so there is no reason to query again.
+            Renderer:RefreshZoom()
+        else
+            Renderer:MarkDirty()
+            Renderer:RefreshPositions()
+        end
+    end)
     self.frame:SetScript("OnUpdate", function()
         Renderer:RefreshPositions()
     end)
