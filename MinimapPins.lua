@@ -32,9 +32,9 @@ end
 
 function Renderer:GetPinSize(pin, zoomYards)
     local cluster = pin and string.find(pin.texture or "", "^cluster_") ~= nil
-    local referenceSize = cluster and 24 or 20
-    local minimum = cluster and 18 or 14
-    local maximum = cluster and 38 or 32
+    local referenceSize = cluster and 20 or 16
+    local minimum = cluster and 14 or 12
+    local maximum = cluster and 28 or 24
     local size = referenceSize * REFERENCE_ZOOM_YARDS / (tonumber(zoomYards) or REFERENCE_ZOOM_YARDS)
     return math.floor(math.max(minimum, math.min(maximum, size)) + 0.5)
 end
