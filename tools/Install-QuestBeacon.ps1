@@ -28,7 +28,8 @@ if ($modulePaths.Count -eq 0) {
     throw 'QuestBeacon.toc does not list any Lua modules.'
 }
 
-$manifest = @('QuestBeacon.toc') + $modulePaths + @('db\questbeacon.db')
+$runtimeAssets = @('img\arrow.tga')
+$manifest = @('QuestBeacon.toc') + $modulePaths + $runtimeAssets + @('db\questbeacon.db')
 foreach ($relativePath in $manifest) {
     if ([IO.Path]::IsPathRooted($relativePath) -or $relativePath -match '(^|[\\/])\.\.([\\/]|$)') {
         throw "Unsafe manifest path: $relativePath"

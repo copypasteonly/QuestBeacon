@@ -436,11 +436,17 @@ function Navigation:SetTrackingMode(mode, questID, objectiveIndex)
         self.trackedQuestID = nil
         self.trackedObjectiveIndex = nil
         self.manualSignature = nil
+        if QuestBeacon.Arrow then
+            QuestBeacon.Arrow:SaveTracking()
+        end
         return true, nil
     elseif mode == "manual" then
         self.trackingMode = "manual"
         self.trackedQuestID = nil
         self.trackedObjectiveIndex = nil
+        if QuestBeacon.Arrow then
+            QuestBeacon.Arrow:SaveTracking()
+        end
         return true, nil
     elseif mode ~= "quest" then
         return false, "invalid tracking mode"
@@ -457,6 +463,9 @@ function Navigation:SetTrackingMode(mode, questID, objectiveIndex)
     self.trackedQuestID = validatedQuestID
     self.trackedObjectiveIndex = validatedObjectiveIndex
     self.manualSignature = nil
+    if QuestBeacon.Arrow then
+        QuestBeacon.Arrow:SaveTracking()
+    end
     return true, nil
 end
 
@@ -488,6 +497,9 @@ function Navigation:CycleTarget(direction)
     self.state.target = candidates[nextIndex]
     self.state.available = true
     self.manualSignature = self:CandidateSignature(self.state.target)
+    if QuestBeacon.Arrow then
+        QuestBeacon.Arrow:SaveTracking()
+    end
     return self.state.target, nil
 end
 
@@ -573,6 +585,9 @@ function Navigation:AutoResolve(initial)
     if not QuestBeacon.Arrow and (initial or signature ~= self.lastAutomaticSignature) then
         self:PrintProof(state, true)
     end
+    if QuestBeacon.Arrow then
+        QuestBeacon.Arrow:Refresh(state)
+    end
     self.lastAutomaticSignature = signature
     return state
 end
@@ -648,6 +663,15 @@ SlashCmdList["QUESTBEACON"] = function(message)
     if command == "status" then
         Navigation:PrintStatus()
         return
+    elseif command == "show" and QuestBeacon.Arrow then
+        QuestBeacon.Arrow:Show()
+        return
+    elseif command == "hide" and QuestBeacon.Arrow then
+        QuestBeacon.Arrow:Hide()
+        return
+    elseif command == "reset" and QuestBeacon.Arrow then
+        QuestBeacon.Arrow:Reset()
+        return
     elseif command == "auto" then
         Navigation:SetTrackingMode("auto")
         Navigation:PrintProof(Navigation:ResolveCurrent(nil), false)
@@ -678,7 +702,7 @@ SlashCmdList["QUESTBEACON"] = function(message)
         if capturedID then
             questFilter = tonumber(capturedID)
         else
-            QuestBeacon:Print("usage: /qbeacon status | proof [questID] | auto | next | prev | track questID [objective]")
+            QuestBeacon:Print("usage: /qbeacon status | proof [questID] | auto | next | prev | track questID [objective] | show | hide | reset")
             return
         end
     end

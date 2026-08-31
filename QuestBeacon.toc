@@ -1,12 +1,14 @@
 ## Interface: 11200
 ## Title: QuestBeacon
-## Notes: Runtime quest navigation proof for OctoWoW
+## Notes: Quest navigation HUD for OctoWoW
 ## Author: copypasteonly
-## Version: 0.2.0
+## Version: 0.3.0
+## SavedVariables: QuestBeaconSettings
 
 Core.lua
 DB.lua
 PositionService.lua
 QuestService.lua
 Navigation.lua
+Arrow.lua
 Events.lua
