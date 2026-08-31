@@ -686,6 +686,12 @@ function Navigation:PrintStatus()
             tostring(pins.publishes or 0) .. " cancelled=" .. tostring(pins.cancelled or 0) ..
             " lastPins=" .. tostring(pins.lastPinCount or 0))
     end
+    if QuestBeacon.WorldMapPins and QuestBeacon.WorldMapPins.GetStats then
+        local world = QuestBeacon.WorldMapPins:GetStats()
+        QuestBeacon:Print("world map events=" .. tostring(world.received or 0) .. " skipped=" ..
+            tostring(world.skipped or 0) .. " renders=" .. tostring(world.completed or 0) ..
+            " lastPins=" .. tostring(world.lastPinCount or 0))
+    end
     if questDiagnostics.expansionError then
         QuestBeacon:Print("quest header scan failed: " .. tostring(questDiagnostics.expansionError))
     end
