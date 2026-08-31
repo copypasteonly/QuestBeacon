@@ -1,5 +1,6 @@
 QuestBeacon.QuestHistory = QuestBeacon.QuestHistory or {}
 local History = QuestBeacon.QuestHistory
+History.revision = History.revision or 0
 
 local function positiveInteger(value)
     local number = tonumber(value)
@@ -34,12 +35,18 @@ function History:RecordComplete(questID)
         time = type(time) == "function" and time() or 0,
         level = type(UnitLevel) == "function" and tonumber(UnitLevel("player")) or nil,
     }
+    self.revision = self.revision + 1
     return true
 end
 
 function History:Reset()
     QuestBeaconHistory = { completed = {} }
+    self.revision = self.revision + 1
     if QuestBeacon.AvailabilityService then QuestBeacon.AvailabilityService:Invalidate("quest history reset") end
+end
+
+function History:GetRevision()
+    return self.revision
 end
 
 History:Initialize()

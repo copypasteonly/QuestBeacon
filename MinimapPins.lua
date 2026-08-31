@@ -239,5 +239,9 @@ function Renderer:Initialize()
             owner:MarkDirty() owner:RefreshPositions()
         end
     end)
+    QuestBeacon.PinService:RegisterListener(self, function(owner, areaID)
+        local player = QuestBeacon.PositionService:GetPlayerPosition()
+        if player.available and player.areaID == areaID then owner:MarkDirty() end
+    end)
     self:RefreshPositions()
 end

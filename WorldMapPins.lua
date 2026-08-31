@@ -126,4 +126,7 @@ function Renderer:Initialize()
     QuestBeacon.Config:RegisterListener(self, function(owner, path)
         if string.find(path, "^worldMap") or string.find(path, "^availability") or path == "reset" then owner:Refresh() end
     end)
+    QuestBeacon.PinService:RegisterListener(self, function(owner, areaID)
+        if owner:GetViewedAreaID() == areaID then owner:Refresh() end
+    end)
 end

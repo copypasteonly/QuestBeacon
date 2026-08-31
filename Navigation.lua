@@ -680,6 +680,12 @@ function Navigation:PrintStatus()
             " scanned=" .. tostring(availability.scanned or 0) .. " available=" ..
             tostring(availability.available or 0) .. " publishes=" .. tostring(availability.publishes or 0))
     end
+    if QuestBeacon.PinService and QuestBeacon.PinService.GetStats then
+        local pins = QuestBeacon.PinService:GetStats()
+        QuestBeacon:Print("pin plans requested=" .. tostring(pins.requests or 0) .. " published=" ..
+            tostring(pins.publishes or 0) .. " cancelled=" .. tostring(pins.cancelled or 0) ..
+            " lastPins=" .. tostring(pins.lastPinCount or 0))
+    end
     if questDiagnostics.expansionError then
         QuestBeacon:Print("quest header scan failed: " .. tostring(questDiagnostics.expansionError))
     end

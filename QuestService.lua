@@ -12,6 +12,8 @@ QuestService.scanningHeaders = false
 QuestService.primeAttempts = 0
 QuestService.recoveredEntries = nil
 QuestService.recoveryScanned = 0
+QuestService.stateRevision = 0
+QuestService.stateSignature = nil
 QuestService.diagnostics = {
     visibleEntries = 0,
     expandedEntries = 0,
@@ -395,6 +397,25 @@ function QuestService:Rebuild()
     end
     self.activeQuests = activeQuests
     self.questsByID = questsByID
+    local signatureParts = {}
+    for index = 1, table.getn(activeQuests) do
+        local quest = activeQuests[index]
+        table.insert(signatureParts, table.concat({tostring(quest.id), tostring(quest.title or ""),
+            quest.complete and "1" or "0", quest.pendingData and "1" or "0"}, ":"))
+        local objectiveIndex
+        for objectiveIndex = 1, table.getn(quest.objectives) do
+            local objective = quest.objectives[objectiveIndex]
+            table.insert(signatureParts, table.concat({tostring(objective.index), tostring(objective.kind or ""),
+                tostring(objective.entryID or 0), objective.complete and "1" or "0",
+                tostring(objective.currentCount or ""), tostring(objective.requiredCount or ""),
+                tostring(objective.unresolvedReason or "")}, ":"))
+        end
+    end
+    local stateSignature = table.concat(signatureParts, "|")
+    if self.stateSignature ~= stateSignature then
+        self.stateSignature = stateSignature
+        self.stateRevision = self.stateRevision + 1
+    end
 end
 
 function QuestService:Refresh()
@@ -413,6 +434,10 @@ end
 
 function QuestService:GetActiveQuests()
     return self.activeQuests
+end
+
+function QuestService:GetRevision()
+    return self.stateRevision
 end
 
 function QuestService:GetDiagnostics()
