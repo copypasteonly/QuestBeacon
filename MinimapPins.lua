@@ -2,8 +2,10 @@ QuestBeacon.MinimapPins = QuestBeacon.MinimapPins or {}
 local Renderer = QuestBeacon.MinimapPins
 
 Renderer.pool = {}
-Renderer.elapsed = 0
 Renderer.dirty = true
+Renderer.spatial = {}
+
+local BUCKET_SIZE = 500
 
 local OUTDOOR_ZOOM = {[0]=300,[1]=240,[2]=180,[3]=120,[4]=80,[5]=50}
 local INDOOR_ZOOM = {[0]=466.6666667,[1]=400,[2]=333.3333333,[3]=266.3333333,[4]=200,[5]=133.3333333}
@@ -60,7 +62,45 @@ end
 function Renderer:RefreshData()
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     if player.available then QuestBeacon.PinService:Rebuild(player.areaID, "minimap") end
+    self:BuildSpatialIndex()
+    self.zoomYards = self:GetZoomYards()
+    self.rotateMinimap = safeGetCVar("rotateMinimap") == "1"
     self.dirty = false
+end
+
+function Renderer:BuildSpatialIndex()
+    self.spatial = {}
+    local pins = QuestBeacon.PinService:GetMinimapPins()
+    local index
+    for index = 1, table.getn(pins) do
+        local pin = pins[index]
+        local mapBuckets = self.spatial[pin.mapID]
+        if not mapBuckets then mapBuckets = {} self.spatial[pin.mapID] = mapBuckets end
+        local bucketX = math.floor(pin.x / BUCKET_SIZE)
+        local bucketY = math.floor(pin.y / BUCKET_SIZE)
+        if not mapBuckets[bucketX] then mapBuckets[bucketX] = {} end
+        if not mapBuckets[bucketX][bucketY] then mapBuckets[bucketX][bucketY] = {} end
+        table.insert(mapBuckets[bucketX][bucketY], pin)
+    end
+end
+
+function Renderer:RenderPin(pin, player, settings, width, height, zoomYards, radius, cosine, sine, shown)
+    if not settings[pin.role] then return shown end
+    local east = (player.y - pin.y) * width / zoomYards
+    local north = (pin.x - player.x) * height / zoomYards
+    local x = east * cosine - north * sine
+    local y = east * sine + north * cosine
+    if x * x + y * y > radius * radius then return shown end
+    shown = shown + 1
+    local frame = self:GetPin(shown)
+    if frame.pin ~= pin then
+        frame.pin = pin
+        frame.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. pin.texture)
+    end
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", Minimap, "CENTER", x, y)
+    frame:Show()
+    return shown
 end
 
 function Renderer:RefreshPositions()
@@ -70,31 +110,48 @@ function Renderer:RefreshPositions()
         for hidden = 1, table.getn(self.pool) do self.pool[hidden]:Hide() end
         return
     end
+    local dataChanged = self.dirty
     if self.dirty then self:RefreshData() end
-    local pins = QuestBeacon.PinService:GetMinimapPins()
+    local now = type(GetTime) == "function" and GetTime() or 0
+    local facing = self.rotateMinimap and (player.facing or 0) or 0
+    local unchanged = not dataChanged and self.lastX == player.x and self.lastY == player.y and
+        self.lastMapID == player.mapID and self.lastFacing == facing
+    -- Movement stays frame-smooth; while standing still we only do the
+    -- occasional safety refresh, matching pfQuest's minimap update behavior.
+    if unchanged and now < (self.nextForcedRefresh or 0) then return end
+    self.lastX = player.x
+    self.lastY = player.y
+    self.lastMapID = player.mapID
+    self.lastFacing = facing
+    self.nextForcedRefresh = now + 1
     local width, height = Minimap:GetWidth(), Minimap:GetHeight()
-    local zoomYards = self:GetZoomYards()
+    local zoomYards = self.zoomYards or self:GetZoomYards()
     local radius = math.min(width, height) / 2 - 10
-    local rotate = safeGetCVar("rotateMinimap") == "1"
-    local facing = rotate and (player.facing or 0) or 0
     local cosine, sine = math.cos(facing), math.sin(facing)
+    local settings = QuestBeacon.Config:Get("minimap")
+    local mapBuckets = self.spatial[player.mapID]
     local shown = 0
-    local index
-    for index = 1, table.getn(pins) do
-        local pin = pins[index]
-        if pin.mapID == player.mapID and QuestBeacon.Config:Get("minimap." .. pin.role) then
-            local east = (player.y - pin.y) * width / zoomYards
-            local north = (pin.x - player.x) * height / zoomYards
-            local x = east * cosine - north * sine
-            local y = east * sine + north * cosine
-            if x * x + y * y <= radius * radius then
-                shown = shown + 1
-                local frame = self:GetPin(shown) frame.pin = pin
-                frame.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. pin.texture)
-                frame:ClearAllPoints() frame:SetPoint("CENTER", Minimap, "CENTER", x, y) frame:Show()
+    if mapBuckets then
+        local playerBucketX = math.floor(player.x / BUCKET_SIZE)
+        local playerBucketY = math.floor(player.y / BUCKET_SIZE)
+        local bucketX, bucketY
+        for bucketX = playerBucketX - 1, playerBucketX + 1 do
+            local column = mapBuckets[bucketX]
+            if column then
+                for bucketY = playerBucketY - 1, playerBucketY + 1 do
+                    local bucket = column[bucketY]
+                    if bucket then
+                        local pinIndex
+                        for pinIndex = 1, table.getn(bucket) do
+                            shown = self:RenderPin(bucket[pinIndex], player, settings, width, height,
+                                zoomYards, radius, cosine, sine, shown)
+                        end
+                    end
+                end
             end
         end
     end
+    local index
     for index = shown + 1, table.getn(self.pool) do self.pool[index]:Hide() end
 end
 
@@ -113,8 +170,7 @@ function Renderer:Initialize()
     self.frame:RegisterEvent("SKILL_LINES_CHANGED")
     self.frame:SetScript("OnEvent", function() Renderer:MarkDirty() Renderer:RefreshPositions() end)
     self.frame:SetScript("OnUpdate", function()
-        Renderer.elapsed = Renderer.elapsed + (tonumber(arg1) or 0)
-        if Renderer.elapsed >= 0.2 then Renderer.elapsed = 0 Renderer:RefreshPositions() end
+        Renderer:RefreshPositions()
     end)
     QuestBeacon.Config:RegisterListener(self, function(owner, path)
         if string.find(path, "^minimap") or string.find(path, "^availability") or path == "reset" then
