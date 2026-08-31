@@ -2,10 +2,19 @@ QuestBeacon.MinimapPins = QuestBeacon.MinimapPins or {}
 local Renderer = QuestBeacon.MinimapPins
 
 Renderer.pool = {}
-Renderer.dirty = true
 Renderer.spatial = {}
+Renderer.activePins = {}
+Renderer.motion = {}
+Renderer.planDirty = true
+Renderer.discoveryDirty = true
+Renderer.filterRevision = 1
+Renderer.stats = {discoveries=0, repositions=0, bucketBuilds=0, activeCandidates=0, areaChecks=0}
 
 local BUCKET_SIZE = 500
+local DISCOVERY_MULTIPLIER = 1.5
+local REDISCOVER_MARGIN_FRACTION = 0.25
+local AREA_CHECK_INTERVAL = 0.5
+local SAFETY_REFRESH_INTERVAL = 1
 
 local OUTDOOR_ZOOM = {[0]=300,[1]=240,[2]=180,[3]=120,[4]=80,[5]=50}
 local INDOOR_ZOOM = {[0]=466.6666667,[1]=400,[2]=333.3333333,[3]=266.3333333,[4]=200,[5]=133.3333333}
@@ -13,20 +22,21 @@ local REFERENCE_ZOOM_YARDS = 120
 
 local function safeGetCVar(name)
     if type(GetCVar) ~= "function" then return nil end
-    -- Some 1.12 clients throw for unknown CVars instead of returning nil.
     local ok, value = pcall(GetCVar, name)
     if ok then return value end
     return nil
 end
 
+local function now()
+    if type(GetTime) == "function" then return GetTime() end
+    return 0
+end
+
 function Renderer:GetZoomYards()
     local zoom = tonumber(Minimap:GetZoom()) or 0
-    local indoor = false
-    if type(GetCVar) == "function" then
-        local inside = tonumber(safeGetCVar("minimapInsideZoom"))
-        local outside = tonumber(safeGetCVar("minimapZoom"))
-        indoor = inside == zoom and inside ~= outside
-    end
+    local inside = tonumber(safeGetCVar("minimapInsideZoom"))
+    local outside = tonumber(safeGetCVar("minimapZoom"))
+    local indoor = inside == zoom and inside ~= outside
     return (indoor and INDOOR_ZOOM or OUTDOOR_ZOOM)[zoom] or 300
 end
 
@@ -40,6 +50,7 @@ function Renderer:ObserveZoom()
     if self.zoomIndex == zoomIndex then return false end
     self.zoomIndex = zoomIndex
     self.zoomYards = self:GetZoomYards()
+    self.discoveryDirty = true
     self.nextForcedRefresh = 0
     return true
 end
@@ -57,9 +68,7 @@ function Renderer:ApplyPinSize(frame, pin, zoomYards, pinChanged)
     if not pinChanged and frame.sizeZoomYards == zoomYards then return end
     local size = self:GetPinSize(pin, zoomYards)
     if frame.pinSize ~= size then
-        frame:SetWidth(size)
-        frame:SetHeight(size)
-        frame.pinSize = size
+        frame:SetWidth(size) frame:SetHeight(size) frame.pinSize = size
     end
     frame.sizeZoomYards = zoomYards
 end
@@ -75,6 +84,11 @@ function Renderer:GetPin(index)
     frame:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     self.pool[index] = frame
     return frame
+end
+
+function Renderer:HidePins()
+    local index
+    for index = 1, table.getn(self.pool) do self.pool[index]:Hide() end
 end
 
 function Renderer:ShowTooltip(frame)
@@ -94,19 +108,9 @@ function Renderer:ShowTooltip(frame)
     GameTooltip:Show()
 end
 
-function Renderer:RefreshData()
-    local player = QuestBeacon.PositionService:GetPlayerPosition()
-    if player.available then QuestBeacon.PinService:Rebuild(player.areaID, "minimap") end
-    self:BuildSpatialIndex()
-    self.zoomYards = self:GetZoomYards()
-    self.zoomIndex = self:GetZoomIndex()
-    self.rotateMinimap = safeGetCVar("rotateMinimap") == "1"
-    self.dirty = false
-end
-
-function Renderer:BuildSpatialIndex()
+function Renderer:BuildSpatialIndex(plan)
     self.spatial = {}
-    local pins = QuestBeacon.PinService:GetMinimapPins()
+    local pins = plan and plan.pins or {}
     local index
     for index = 1, table.getn(pins) do
         local pin = pins[index]
@@ -118,10 +122,112 @@ function Renderer:BuildSpatialIndex()
         if not mapBuckets[bucketX][bucketY] then mapBuckets[bucketX][bucketY] = {} end
         table.insert(mapBuckets[bucketX][bucketY], pin)
     end
+    self.planIdentity = plan and plan.identity or nil
+    self.stats.bucketBuilds = self.stats.bucketBuilds + 1
+    self.discoveryDirty = true
 end
 
-function Renderer:RenderPin(pin, player, settings, width, height, zoomYards, radius, cosine, sine, shown)
-    if not settings[pin.role] then return shown end
+function Renderer:RefreshArea(force)
+    local currentTime = now()
+    if not force and self.areaID and currentTime < (self.nextAreaCheck or 0) then return false end
+    local rawAreaID = C_Map.GetBestMapForUnit("player")
+    local areaID = tonumber(rawAreaID)
+    self.nextAreaCheck = currentTime + AREA_CHECK_INTERVAL
+    self.stats.areaChecks = self.stats.areaChecks + 1
+    if not areaID or areaID <= 0 then return false end
+    if self.areaID == areaID then return false end
+    self.areaID = areaID
+    self.planDirty = true
+    self.discoveryDirty = true
+    return true
+end
+
+function Renderer:RefreshRotation(force)
+    local currentTime = now()
+    if not force and currentTime < (self.nextRotationCheck or 0) then return false end
+    self.nextRotationCheck = currentTime + SAFETY_REFRESH_INTERVAL
+    local rotate = safeGetCVar("rotateMinimap") == "1"
+    if self.rotateMinimap == rotate then return false end
+    self.rotateMinimap = rotate
+    self.discoveryDirty = true
+    return true
+end
+
+function Renderer:RefreshPlan()
+    if not self.areaID then return end
+    QuestBeacon.PinService:RequestPlan(self.areaID)
+    local plan = QuestBeacon.PinService:GetPlan(self.areaID)
+    if not plan then
+        if self.planAreaID ~= self.areaID then
+            self.planAreaID = self.areaID
+            self.planIdentity = nil
+            self.activePins = {}
+            self.spatial = {}
+            self:HidePins()
+        end
+        return
+    end
+    self.planAreaID = self.areaID
+    if self.planIdentity ~= plan.identity then self:BuildSpatialIndex(plan) end
+    self.planDirty = false
+end
+
+function Renderer:NeedsDiscovery(player, zoomYards)
+    if self.discoveryDirty then return true end
+    if self.discoveryMapID ~= player.mapID or self.discoveryAreaID ~= self.areaID then return true end
+    if self.discoveryZoomYards ~= zoomYards or self.discoveryFilterRevision ~= self.filterRevision then return true end
+    if self.discoveryRotate ~= self.rotateMinimap or self.discoveryPlanIdentity ~= self.planIdentity then return true end
+    local deltaX = player.x - (self.discoveryX or player.x)
+    local deltaY = player.y - (self.discoveryY or player.y)
+    local visibleRadius = zoomYards / 2
+    local margin = visibleRadius * (DISCOVERY_MULTIPLIER - 1)
+    local threshold = margin * REDISCOVER_MARGIN_FRACTION
+    return deltaX * deltaX + deltaY * deltaY >= threshold * threshold
+end
+
+function Renderer:Discover(player, zoomYards)
+    local visibleRadius = zoomYards / 2
+    local discoveryRadius = visibleRadius * DISCOVERY_MULTIPLIER
+    local radiusSquared = discoveryRadius * discoveryRadius
+    local bucketRange = math.ceil(discoveryRadius / BUCKET_SIZE) + 1
+    local playerBucketX = math.floor(player.x / BUCKET_SIZE)
+    local playerBucketY = math.floor(player.y / BUCKET_SIZE)
+    local settings = QuestBeacon.Config:Get("minimap")
+    local active = {}
+    local mapBuckets = self.spatial[player.mapID]
+    if mapBuckets then
+        local bucketX, bucketY
+        for bucketX = playerBucketX - bucketRange, playerBucketX + bucketRange do
+            local column = mapBuckets[bucketX]
+            if column then
+                for bucketY = playerBucketY - bucketRange, playerBucketY + bucketRange do
+                    local bucket = column[bucketY]
+                    if bucket then
+                        local pinIndex
+                        for pinIndex = 1, table.getn(bucket) do
+                            local pin = bucket[pinIndex]
+                            if settings[pin.role] then
+                                local deltaX = pin.x - player.x
+                                local deltaY = pin.y - player.y
+                                if deltaX * deltaX + deltaY * deltaY <= radiusSquared then table.insert(active, pin) end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    self.activePins = active
+    self.discoveryX = player.x self.discoveryY = player.y
+    self.discoveryMapID = player.mapID self.discoveryAreaID = self.areaID
+    self.discoveryZoomYards = zoomYards self.discoveryFilterRevision = self.filterRevision
+    self.discoveryRotate = self.rotateMinimap self.discoveryPlanIdentity = self.planIdentity
+    self.discoveryDirty = false
+    self.stats.discoveries = self.stats.discoveries + 1
+    self.stats.activeCandidates = table.getn(active)
+end
+
+function Renderer:RenderPin(pin, player, width, height, zoomYards, radius, cosine, sine, shown)
     local east = (player.y - pin.y) * width / zoomYards
     local north = (pin.x - player.x) * height / zoomYards
     local x = east * cosine - north * sine
@@ -147,63 +253,43 @@ function Renderer:RenderPin(pin, player, settings, width, height, zoomYards, rad
 end
 
 function Renderer:RefreshPositions()
-    local player = QuestBeacon.PositionService:GetPlayerPosition()
-    if not player.available then
-        local hidden
-        for hidden = 1, table.getn(self.pool) do self.pool[hidden]:Hide() end
-        return
-    end
-    local dataChanged = self.dirty
-    if self.dirty then self:RefreshData() end
-    -- OctoWoW can change Minimap:GetZoom() without delivering the vanilla
-    -- zoom event. Watching this integer keeps projection and icon scale in sync.
-    local zoomChanged = self:ObserveZoom()
-    local now = type(GetTime) == "function" and GetTime() or 0
-    local facing = self.rotateMinimap and (player.facing or 0) or 0
+    self:ObserveZoom()
+    self:RefreshRotation(false)
+    local player = QuestBeacon.PositionService:FillPlayerMotion(self.motion, self.rotateMinimap)
+    if not player.available then self:HidePins() return end
+    local mapChanged = self.lastMapID ~= player.mapID
+    self:RefreshArea(mapChanged)
+    if self.planDirty then self:RefreshPlan() end
+    if not self.areaID or self.planAreaID ~= self.areaID then self:HidePins() return end
     local zoomYards = self.zoomYards or self:GetZoomYards()
-    local unchanged = not dataChanged and not zoomChanged and self.lastX == player.x and self.lastY == player.y and
-        self.lastMapID == player.mapID and self.lastFacing == facing and self.lastZoomYards == zoomYards
-    -- Movement stays frame-smooth; while standing still we only do the
-    -- occasional safety refresh, matching pfQuest's minimap update behavior.
-    if unchanged and now < (self.nextForcedRefresh or 0) then return end
-    self.lastX = player.x
-    self.lastY = player.y
-    self.lastMapID = player.mapID
-    self.lastFacing = facing
-    self.lastZoomYards = zoomYards
-    self.nextForcedRefresh = now + 1
+    local discovered = false
+    if self:NeedsDiscovery(player, zoomYards) then
+        self:Discover(player, zoomYards)
+        discovered = true
+    end
+    local currentTime = now()
+    local facing = self.rotateMinimap and (player.facing or 0) or 0
+    local unchanged = self.lastX == player.x and self.lastY == player.y and self.lastMapID == player.mapID and
+        self.lastFacing == facing and self.lastZoomYards == zoomYards and not discovered
+    if unchanged and currentTime < (self.nextForcedRefresh or 0) then return end
+    self.lastX = player.x self.lastY = player.y self.lastMapID = player.mapID
+    self.lastFacing = facing self.lastZoomYards = zoomYards
+    self.nextForcedRefresh = currentTime + SAFETY_REFRESH_INTERVAL
     local width, height = Minimap:GetWidth(), Minimap:GetHeight()
     local radius = math.min(width, height) / 2 - 10
     local cosine, sine = math.cos(facing), math.sin(facing)
-    local settings = QuestBeacon.Config:Get("minimap")
-    local mapBuckets = self.spatial[player.mapID]
     local shown = 0
-    if mapBuckets then
-        local playerBucketX = math.floor(player.x / BUCKET_SIZE)
-        local playerBucketY = math.floor(player.y / BUCKET_SIZE)
-        local bucketX, bucketY
-        for bucketX = playerBucketX - 1, playerBucketX + 1 do
-            local column = mapBuckets[bucketX]
-            if column then
-                for bucketY = playerBucketY - 1, playerBucketY + 1 do
-                    local bucket = column[bucketY]
-                    if bucket then
-                        local pinIndex
-                        for pinIndex = 1, table.getn(bucket) do
-                            shown = self:RenderPin(bucket[pinIndex], player, settings, width, height,
-                                zoomYards, radius, cosine, sine, shown)
-                        end
-                    end
-                end
-            end
-        end
-    end
     local index
+    for index = 1, table.getn(self.activePins) do
+        shown = self:RenderPin(self.activePins[index], player, width, height, zoomYards,
+            radius, cosine, sine, shown)
+    end
     for index = shown + 1, table.getn(self.pool) do self.pool[index]:Hide() end
+    self.stats.repositions = self.stats.repositions + 1
 end
 
 function Renderer:MarkDirty()
-    self.dirty = true
+    self.planDirty = true
 end
 
 function Renderer:RefreshZoom()
@@ -212,36 +298,34 @@ function Renderer:RefreshZoom()
     self:RefreshPositions()
 end
 
+function Renderer:GetStats() return self.stats end
+
 function Renderer:Initialize()
-    if self.frame then return end
-    if not Minimap then return end
+    if self.frame or not Minimap then return end
     self.frame = CreateFrame("Frame", nil, Minimap)
     self.frame:RegisterEvent("MINIMAP_UPDATE_ZOOM")
     self.frame:RegisterEvent("ZONE_CHANGED")
     self.frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-    self.frame:RegisterEvent("PLAYER_LEVEL_UP")
-    self.frame:RegisterEvent("SKILL_LINES_CHANGED")
     self.frame:SetScript("OnEvent", function()
         if event == "MINIMAP_UPDATE_ZOOM" then
-            -- Zoom changes only affect projection and hitbox size. Pin data and
-            -- its spatial buckets remain valid, so there is no reason to query again.
             Renderer:RefreshZoom()
         else
+            Renderer:RefreshArea(true)
             Renderer:MarkDirty()
             Renderer:RefreshPositions()
         end
     end)
-    self.frame:SetScript("OnUpdate", function()
-        Renderer:RefreshPositions()
-    end)
+    self.frame:SetScript("OnUpdate", function() Renderer:RefreshPositions() end)
     QuestBeacon.Config:RegisterListener(self, function(owner, path)
-        if string.find(path, "^minimap") or string.find(path, "^availability") or path == "reset" then
-            owner:MarkDirty() owner:RefreshPositions()
+        if string.find(path or "", "^minimap") or path == "reset" then
+            owner.filterRevision = owner.filterRevision + 1
+            owner.discoveryDirty = true
+            owner:RefreshPositions()
         end
     end)
     QuestBeacon.PinService:RegisterListener(self, function(owner, areaID)
-        local player = QuestBeacon.PositionService:GetPlayerPosition()
-        if player.available and player.areaID == areaID then owner:MarkDirty() end
+        if not owner.areaID or owner.areaID == areaID then owner:MarkDirty() end
     end)
+    self:RefreshArea(true)
     self:RefreshPositions()
 end

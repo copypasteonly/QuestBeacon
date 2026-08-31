@@ -5,6 +5,13 @@ local function unavailable(reason)
     return { available = false, reason = reason }
 end
 
+local function markUnavailable(result, reason)
+    result.available = false
+    result.reason = reason
+    result.x = nil result.y = nil result.z = nil result.mapID = nil result.areaID = nil result.facing = nil
+    return result
+end
+
 local function positiveInteger(value)
     local number = tonumber(value)
     if not number or number <= 0 or math.floor(number) ~= number then
@@ -13,37 +20,41 @@ local function positiveInteger(value)
     return number
 end
 
-function PositionService:GetPlayerPosition()
+function PositionService:FillPlayerMotion(result, includeFacing)
+    result = result or {}
     local posY, posX, posZ, mapID = C_PlayerInfo.UnitPosition("player")
     posY = tonumber(posY)
     posX = tonumber(posX)
     posZ = tonumber(posZ)
     if posY == nil or posX == nil or posZ == nil then
-        return unavailable("player world position is unavailable")
+        return markUnavailable(result, "player world position is unavailable")
     end
     mapID = tonumber(mapID)
     if mapID == nil then
-        return unavailable("player map ID is unavailable")
+        return markUnavailable(result, "player map ID is unavailable")
     end
+    local facing = nil
+    if includeFacing then
+        facing = GetPlayerFacing()
+        facing = tonumber(facing)
+        if facing == nil then return markUnavailable(result, "player facing is unavailable") end
+    end
+    result.available = true
+    result.reason = nil
+    result.x = posX result.y = posY result.z = posZ result.mapID = mapID result.facing = facing
+    return result
+end
+
+function PositionService:GetPlayerPosition()
+    local result = self:FillPlayerMotion({}, true)
+    if not result.available then return result end
     local areaID = C_Map.GetBestMapForUnit("player")
     areaID = tonumber(areaID)
     if areaID == nil or areaID <= 0 then
         return unavailable("player area ID is unavailable")
     end
-    local facing = GetPlayerFacing()
-    facing = tonumber(facing)
-    if facing == nil then
-        return unavailable("player facing is unavailable")
-    end
-    return {
-        available = true,
-        x = posX,
-        y = posY,
-        z = posZ,
-        mapID = mapID,
-        areaID = areaID,
-        facing = facing,
-    }
+    result.areaID = areaID
+    return result
 end
 
 function PositionService:GetVisibleObjectivePosition(kind, entryID)

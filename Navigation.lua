@@ -692,6 +692,13 @@ function Navigation:PrintStatus()
             tostring(world.skipped or 0) .. " renders=" .. tostring(world.completed or 0) ..
             " lastPins=" .. tostring(world.lastPinCount or 0))
     end
+    if QuestBeacon.MinimapPins and QuestBeacon.MinimapPins.GetStats then
+        local minimap = QuestBeacon.MinimapPins:GetStats()
+        QuestBeacon:Print("minimap discoveries=" .. tostring(minimap.discoveries or 0) .. " moves=" ..
+            tostring(minimap.repositions or 0) .. " buckets=" .. tostring(minimap.bucketBuilds or 0) ..
+            " active=" .. tostring(minimap.activeCandidates or 0) .. " areaChecks=" ..
+            tostring(minimap.areaChecks or 0))
+    end
     if questDiagnostics.expansionError then
         QuestBeacon:Print("quest header scan failed: " .. tostring(questDiagnostics.expansionError))
     end
