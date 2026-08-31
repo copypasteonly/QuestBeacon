@@ -297,6 +297,14 @@ function Arrow:Reset()
     self:Refresh(QuestBeacon.Navigation:AutoResolve(false))
 end
 
+function Arrow:OnAddonLoaded()
+    self:EnsureSettings()
+    self:ApplyPosition()
+    self:ApplyScale(false)
+    self:RestoreTracking()
+    self:Refresh()
+end
+
 function Arrow:Initialize()
     local frame = CreateFrame("Frame", "QuestBeaconArrowFrame", UIParent)
     self.frame = frame

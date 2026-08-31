@@ -57,6 +57,9 @@ function Coordinator:OnEvent(eventName, first, second)
     if eventName == "ADDON_LOADED" then
         if first == QuestBeacon.NAME then
             QuestBeacon:Initialize()
+            if QuestBeacon.Arrow then
+                QuestBeacon.Arrow:OnAddonLoaded()
+            end
         end
         return
     end
