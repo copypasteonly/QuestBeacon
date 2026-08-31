@@ -245,13 +245,30 @@ function Tracker:ApplyPosition()
 end
 
 function Tracker:SaveSize()
-    QuestBeacon.Config:Set("trackerWidth", math.floor((tonumber(self.frame:GetWidth()) or 320) + 0.5))
-    QuestBeacon.Config:Set("trackerHeight", math.floor((tonumber(self.frame:GetHeight()) or 300) + 0.5))
+    -- Capture both values first. Saving width notifies Config listeners, which
+    -- reapplies the previous saved height before the second read otherwise.
+    local width = math.floor((tonumber(self.frame:GetWidth()) or 320) + 0.5)
+    local height = math.floor((tonumber(self.frame:GetHeight()) or 300) + 0.5)
+    QuestBeacon.Config:Set("trackerWidth", width)
+    QuestBeacon.Config:Set("trackerHeight", height)
 end
 
 function Tracker:ApplySize()
     self.frame:SetWidth(QuestBeacon.Config:Get("trackerWidth"))
     self.frame:SetHeight(QuestBeacon.Config:Get("trackerHeight"))
+end
+
+function Tracker:UpdateContentWidth()
+    if not self.content then return end
+    local contentWidth = math.max(220, self.frame:GetWidth() - 20)
+    self.content:SetWidth(contentWidth)
+    local index
+    for index = 1, table.getn(self.questRows) do
+        self.questRows[index]:SetWidth(contentWidth)
+        self.questRows[index].title:SetWidth(contentWidth - 22)
+    end
+    for index = 1, table.getn(self.objectiveRows) do self.objectiveRows[index]:SetWidth(contentWidth - 22) end
+    self:Scroll(0)
 end
 
 function Tracker:Scroll(delta)
@@ -349,9 +366,9 @@ function Tracker:OnConfigChanged(path)
     self:Refresh()
 end
 
-local function textureButton(parent, texture, x, callback)
+local function textureButton(parent, texture, anchor, offset, callback)
     local button = CreateFrame("Button", nil, parent)
-    button:SetWidth(20) button:SetHeight(20) button:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -3)
+    button:SetWidth(20) button:SetHeight(20) button:SetPoint(anchor, parent, anchor, offset, -1)
     button.texture = button:CreateTexture(nil, "ARTWORK") button.texture:SetAllPoints(button)
     button.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. texture)
     button:SetScript("OnClick", callback)
@@ -363,22 +380,21 @@ function Tracker:Initialize()
     local frame = CreateFrame("Frame", "QuestBeaconTrackerFrame", UIParent)
     self.frame = frame
     frame:SetWidth(320) frame:SetHeight(300) frame:SetFrameStrata("HIGH")
-    frame:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1, insets={left=1,right=1,top=1,bottom=1}})
-    frame:SetBackdropColor(0.22, 0.22, 0.24, 0.96)
-    frame:SetBackdropBorderColor(0.28, 0.28, 0.32, 1)
+    frame:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8"})
+    frame:SetBackdropColor(0, 0, 0, 0.45)
     frame:SetMovable(true) frame:SetClampedToScreen(true) frame:EnableMouse(true) frame:RegisterForDrag("LeftButton")
     frame:SetResizable(true) frame:SetMinResize(240, 100) frame:SetMaxResize(600, 800)
-    self.viewButton = textureButton(frame, "tracker_quests.tga", 3, function() Tracker:CycleView() end)
+    self.viewButton = textureButton(frame, "tracker_quests.tga", "TOPLEFT", 1, function() Tracker:CycleView() end)
     self.viewButton:SetScript("OnEnter", function() Tracker:ShowControlTooltip(this, "Quest view", "Cycle All, Watched Only, and Current Zone.") end)
     self.viewButton:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     self.sortButton = CreateFrame("Button", nil, frame)
-    self.sortButton:SetWidth(20) self.sortButton:SetHeight(20) self.sortButton:SetPoint("TOPLEFT", frame, "TOPLEFT", 27, -3)
+    self.sortButton:SetWidth(20) self.sortButton:SetHeight(20) self.sortButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -47, -1)
     self.sortButton.text = self.sortButton:CreateFontString(nil, "OVERLAY", "GameFontNormal") self.sortButton.text:SetAllPoints(self.sortButton)
     self.sortButton:SetScript("OnClick", function() QuestBeacon.Config:Set("questSort", QuestBeacon.Config:Get("questSort") == "level" and "distance" or "level") end)
     self.sortButton:SetScript("OnEnter", function() Tracker:ShowControlTooltip(this, "Quest sorting", "N sorts nearest first; L sorts by quest level.") end)
     self.sortButton:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-    self.settingsButton = textureButton(frame, "tracker_settings.tga", 276, function() QuestBeacon.Settings:Toggle() end)
-    self.closeButton = textureButton(frame, "tracker_close.tga", 299, function() QuestBeacon.Config:Set("trackerShown", false) end)
+    self.settingsButton = textureButton(frame, "tracker_settings.tga", "TOPRIGHT", -24, function() QuestBeacon.Settings:Toggle() end)
+    self.closeButton = textureButton(frame, "tracker_close.tga", "TOPRIGHT", -1, function() QuestBeacon.Config:Set("trackerShown", false) end)
     self.scrollFrame = CreateFrame("ScrollFrame", nil, frame)
     self.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -27)
     self.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 12)
@@ -411,6 +427,7 @@ function Tracker:Initialize()
         if this.dragging then this.dragging = nil Tracker:SavePosition() end
     end)
     frame:SetScript("OnUpdate", function() QuestBeacon.WatchService:HideNativeTracker() end)
+    frame:SetScript("OnSizeChanged", function() Tracker:UpdateContentWidth() end)
     self:ApplyPosition()
     self:ApplySize()
     QuestBeacon.Config:RegisterListener(self, self.OnConfigChanged)
