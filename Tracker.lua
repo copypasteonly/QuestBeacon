@@ -38,11 +38,14 @@ end
 function Tracker:GetSortedQuests()
     local active = QuestBeacon.QuestService:GetActiveQuests()
     local starred = QuestBeacon.Config:Get("starredQuests")
+    local hidden = QuestBeacon.Config:Get("hiddenQuests")
     local rows = {}
     local index
     for index = 1, table.getn(active) do
-        table.insert(rows, {quest=active[index], starred=starred[active[index].id] and true or false,
-            distance=activeCandidateDistance(active[index].id) or 999999999999})
+        if not hidden[active[index].id] then
+            table.insert(rows, {quest=active[index], starred=starred[active[index].id] and true or false,
+                distance=activeCandidateDistance(active[index].id) or 999999999999})
+        end
     end
     table.sort(rows, before)
     return rows
@@ -65,15 +68,33 @@ function Tracker:GetQuestRow(index)
     local row = CreateFrame("Button", nil, self.content)
     row:SetWidth(300) row:SetHeight(20) row:RegisterForClicks("LeftButtonUp")
     row.title = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    row.title:SetPoint("LEFT", row, "LEFT", 22, 0) row.title:SetWidth(270) row.title:SetJustifyH("LEFT")
+    row.title:SetPoint("LEFT", row, "LEFT", 24, 0) row.title:SetWidth(246) row.title:SetJustifyH("LEFT")
     row.star = CreateFrame("Button", nil, row)
     row.star:SetWidth(20) row.star:SetHeight(20) row.star:SetPoint("LEFT", row, "LEFT", 0, 0)
     row.star.text = row.star:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     row.star.text:SetAllPoints(row.star)
     row.star:SetScript("OnClick", function() Tracker:ToggleStar(this.questID) end)
+    row.star:SetScript("OnEnter", function() Tracker:ShowControlTooltip(this, "Prioritize quest", "Starred quests stay at the top.") end)
+    row.star:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    row.unwatch = CreateFrame("Button", nil, row)
+    row.unwatch:SetWidth(20) row.unwatch:SetHeight(20) row.unwatch:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    row.unwatch.text = row.unwatch:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row.unwatch.text:SetAllPoints(row.unwatch) row.unwatch.text:SetText("x")
+    row.unwatch.text:SetTextColor(0.8, 0.35, 0.35, 1)
+    row.unwatch:SetScript("OnClick", function() Tracker:SetWatched(this.questID, false) end)
+    row.unwatch:SetScript("OnEnter", function() Tracker:ShowControlTooltip(this, "Unwatch quest", "Hide this quest from the tracker.") end)
+    row.unwatch:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     row:SetScript("OnClick", function() Tracker:Select(this.questID, nil) end)
     self.questRows[index] = row
     return row
+end
+
+function Tracker:ShowControlTooltip(control, title, description)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(control, "ANCHOR_RIGHT")
+    GameTooltip:SetText(title)
+    GameTooltip:AddLine(description, 0.8, 0.8, 0.8)
+    GameTooltip:Show()
 end
 
 function Tracker:GetObjectiveRow(index)
@@ -99,6 +120,35 @@ function Tracker:ToggleStar(questID)
     QuestBeacon.Config:Set("starredQuests", starred)
 end
 
+function Tracker:SetWatched(questID, watched)
+    local id = tonumber(questID)
+    if not id or id <= 0 or math.floor(id) ~= id then return false end
+    local hidden = QuestBeacon.Config:Get("hiddenQuests")
+    hidden[id] = watched and nil or true
+    QuestBeacon.Config:Set("hiddenQuests", hidden)
+    return true
+end
+
+function Tracker:IsWatched(questID)
+    local hidden = QuestBeacon.Config:Get("hiddenQuests")
+    return not hidden[tonumber(questID)]
+end
+
+function Tracker:GetHiddenActiveQuests()
+    local hidden = QuestBeacon.Config:Get("hiddenQuests")
+    local active = QuestBeacon.QuestService:GetActiveQuests()
+    local result = {}
+    local index
+    for index = 1, table.getn(active) do
+        if hidden[active[index].id] then table.insert(result, active[index]) end
+    end
+    return result
+end
+
+function Tracker:WatchAll()
+    QuestBeacon.Config:Set("hiddenQuests", {})
+end
+
 function Tracker:SavePosition()
     local point, relativeTo, relativePoint, x, y = self.frame:GetPoint(1)
     QuestBeacon.Config:Set("trackerPoint", point or "TOPRIGHT")
@@ -122,11 +172,14 @@ function Tracker:Refresh()
         local model, quest = rows[index], rows[index].quest
         questRowIndex = questRowIndex + 1
         local row = self:GetQuestRow(questRowIndex)
-        row.questID = quest.id row.star.questID = quest.id
+        row.questID = quest.id row.star.questID = quest.id row.unwatch.questID = quest.id
         row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
         row.title:SetText("[" .. tostring(quest.level or 0) .. "] " .. tostring(quest.title or ("Quest " .. quest.id)))
-        row.star.text:SetText(model.starred and "*" or "o")
+        row.star.text:SetText(model.starred and "*" or "+")
+        if model.starred then row.star.text:SetTextColor(1, 0.82, 0, 1)
+        else row.star.text:SetTextColor(0.5, 0.5, 0.5, 1) end
         setFontSize(row.title, size + 1) setFontSize(row.star.text, size + 1)
+        setFontSize(row.unwatch.text, size)
         if quest.pendingData then row.title:SetTextColor(0.65,0.65,0.65,1)
         elseif quest.complete then row.title:SetTextColor(0.2,1,0.2,1)
         else row.title:SetTextColor(1,0.82,0,1) end
@@ -164,11 +217,10 @@ function Tracker:Initialize()
     self.frame = frame
     frame:SetWidth(320) frame:SetHeight(100) frame:SetFrameStrata("HIGH")
     frame:SetMovable(true) frame:SetClampedToScreen(true) frame:EnableMouse(true) frame:RegisterForDrag("LeftButton")
-    frame:SetBackdrop({bgFile="Interface\\Tooltips\\UI-Tooltip-Background", edgeFile="Interface\\Tooltips\\UI-Tooltip-Border", tile=true, tileSize=16, edgeSize=12, insets={left=3,right=3,top=3,bottom=3}})
-    frame:SetBackdropColor(0,0,0,0.72)
     local header = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    header:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -9) header:SetText("QuestBeacon")
-    local gear = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    header:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -9) header:SetText("QuestBeacon   + star   x hide")
+    header:SetTextColor(0.75, 0.75, 0.75, 1)
+    local gear = CreateFrame("Button", nil, frame)
     gear:SetWidth(28) gear:SetHeight(20) gear:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -7, -6)
     gear:SetText("S") gear:SetScript("OnClick", function() QuestBeacon.Settings:Toggle() end)
     self.content = CreateFrame("Frame", nil, frame)

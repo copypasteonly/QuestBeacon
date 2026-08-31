@@ -7,7 +7,7 @@ Config.defaults = {
     trackingMode = "auto", arrowFontSize = 12,
     trackerShown = true, trackerLocked = false, trackerFontSize = 12,
     trackerPoint = "TOPRIGHT", trackerX = -30, trackerY = -180,
-    questSort = "distance", starredQuests = {},
+    questSort = "distance", starredQuests = {}, hiddenQuests = {},
     worldMap = { objectives=true, itemSources=true, turnIns=true, available=true },
     minimap = { objectives=true, itemSources=true, turnIns=true, available=true },
     availability = { lowLevel=false, highLevel=false, event=false },

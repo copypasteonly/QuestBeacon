@@ -717,6 +717,34 @@ SlashCmdList["QUESTBEACON"] = function(message)
         Navigation:PrintProof(Navigation:GetState(), false)
         return
     end
+    local watchStart, watchEnd, watchAction, watchQuest = string.find(command, "^(unwatch)%s+(%d+)$")
+    if not watchQuest then
+        watchStart, watchEnd, watchAction, watchQuest = string.find(command, "^(watch)%s+(%d+)$")
+    end
+    if watchQuest and QuestBeacon.Tracker then
+        local watched = watchAction == "watch"
+        if QuestBeacon.Tracker:SetWatched(tonumber(watchQuest), watched) then
+            QuestBeacon:Print((watched and "watching quest " or "stopped watching quest ") .. tostring(watchQuest))
+        end
+        return
+    end
+    if command == "watch all" and QuestBeacon.Tracker then
+        QuestBeacon.Tracker:WatchAll()
+        QuestBeacon:Print("watching all active quests")
+        return
+    elseif command == "watch" and QuestBeacon.Tracker then
+        local hidden = QuestBeacon.Tracker:GetHiddenActiveQuests()
+        if table.getn(hidden) == 0 then
+            QuestBeacon:Print("no hidden active quests")
+        else
+            local hiddenIndex
+            for hiddenIndex = 1, table.getn(hidden) do
+                QuestBeacon:Print("hidden quest " .. tostring(hidden[hiddenIndex].id) .. " - " .. tostring(hidden[hiddenIndex].title))
+            end
+            QuestBeacon:Print("use /qbeacon watch questID or watch all")
+        end
+        return
+    end
     local trackStart, trackEnd, trackedQuest, trackedObjective = string.find(command, "^track%s+(%d+)%s*(%d*)$")
     if trackedQuest then
         local objective = nil
@@ -737,7 +765,7 @@ SlashCmdList["QUESTBEACON"] = function(message)
         if capturedID then
             questFilter = tonumber(capturedID)
         else
-            QuestBeacon:Print("usage: /qbeacon status | proof [questID] | auto | next | prev | track questID [objective] | show | hide | reset | settings")
+            QuestBeacon:Print("usage: /qbeacon status | proof [questID] | auto | track questID [objective] | watch [questID|all] | unwatch questID | show | hide | reset | settings")
             return
         end
     end
