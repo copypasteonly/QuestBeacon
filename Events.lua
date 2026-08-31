@@ -80,6 +80,8 @@ function Coordinator:OnEvent(eventName, first, second)
             return
         end
         self:MarkQuestDirty(true)
+    elseif eventName == "BAG_UPDATE" then
+        self:MarkQuestDirty(false)
     elseif eventName == "QUEST_DATA_LOAD_RESULT" then
         if QuestBeacon.QuestService then
             QuestBeacon.QuestService:OnQuestDataLoaded(tonumber(first), tonumber(second) == 1)
@@ -95,6 +97,7 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("QUEST_LOG_UPDATE")
 frame:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
 frame:RegisterEvent("QUEST_DATA_LOAD_RESULT")
+frame:RegisterEvent("BAG_UPDATE")
 frame:RegisterEvent("PLAYER_LOGOUT")
 frame:SetScript("OnEvent", function()
     Coordinator:OnEvent(event, arg1, arg2)

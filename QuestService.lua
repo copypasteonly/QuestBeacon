@@ -36,6 +36,14 @@ local function completed(value)
     return value == true or tonumber(value) == 1
 end
 
+local function itemCount(itemID)
+    if not C_Item or type(C_Item.GetItemCount) ~= "function" or not itemID then
+        return nil
+    end
+    local rawCount = C_Item.GetItemCount(itemID)
+    return tonumber(rawCount)
+end
+
 local function questLogCounts()
     local entries, quests = GetNumQuestLogEntries()
     return tonumber(entries) or 0, tonumber(quests) or 0
@@ -245,9 +253,7 @@ function QuestService:BuildObjective(logIndex, objectiveIndex)
     }
     if objective.complete then
         objective.unresolvedReason = "completed"
-    elseif kind == "item" then
-        objective.unresolvedReason = "unsupported_item"
-    elseif kind ~= "monster" and kind ~= "object" then
+    elseif kind ~= "monster" and kind ~= "object" and kind ~= "item" then
         objective.unresolvedReason = "unsupported_objective_kind"
     elseif not objective.entryID then
         objective.unresolvedReason = "event_text_no_id"
@@ -337,10 +343,19 @@ function QuestService:BuildRecoveredQuest(entry)
             complete = false,
             pendingData = false,
             progressUnavailable = true,
+            requiredCount = positiveInteger(requirement.count),
+            currentCount = nil,
             unresolvedReason = nil,
         }
         if objective.kind == "item" then
-            objective.unresolvedReason = "unsupported_item"
+            objective.currentCount = itemCount(objective.entryID)
+            if objective.currentCount ~= nil and objective.requiredCount then
+                objective.progressUnavailable = false
+                objective.complete = objective.currentCount >= objective.requiredCount
+                if objective.complete then
+                    objective.unresolvedReason = "completed"
+                end
+            end
         elseif objective.kind ~= "monster" and objective.kind ~= "object" then
             objective.unresolvedReason = "unsupported_objective_kind"
         elseif not objective.entryID then

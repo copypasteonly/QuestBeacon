@@ -6,6 +6,9 @@ DB.KIND_OBJECT = 2
 DB.handle = nil
 DB.metadata = nil
 DB.entityCache = {}
+DB.itemSourceCache = {}
+DB.itemUseCache = {}
+DB.referenceLootCache = {}
 DB.cacheSize = 0
 DB.questIDs = nil
 
@@ -105,6 +108,9 @@ end
 
 function DB:ClearCache()
     self.entityCache = {}
+    self.itemSourceCache = {}
+    self.itemUseCache = {}
+    self.referenceLootCache = {}
     self.cacheSize = 0
     self.questIDs = nil
 end
@@ -201,6 +207,10 @@ function DB:GetItemSources(itemID)
     if not self:Open() then
         return nil, QuestBeacon.disabledReason
     end
+    local cached = self.itemSourceCache[validatedID]
+    if cached then
+        return cached, nil
+    end
     local columns, rows, queryError = self:QueryRaw(
         "SELECT item_id,source_kind,source_id,rate_pct,provenance FROM item_sources " ..
         "WHERE item_id=" .. validatedID .. " ORDER BY source_kind,source_id,provenance"
@@ -217,6 +227,82 @@ function DB:GetItemSources(itemID)
             sourceID = tonumber(row[3]), ratePct = tonumber(row[4]), provenance = row[5],
         })
     end
+    self.itemSourceCache[validatedID] = results
+    self.cacheSize = self.cacheSize + 1
+    return results, nil
+end
+
+function DB:GetItemUseTargets(itemID)
+    local validatedID = positiveInteger(itemID)
+    if not validatedID then
+        return nil, "invalid item ID"
+    end
+    if not self:Open() then
+        return nil, QuestBeacon.disabledReason
+    end
+    local cached = self.itemUseCache[validatedID]
+    if cached then
+        return cached, nil
+    end
+    local columns, rows, queryError = self:QueryRaw(
+        "SELECT item_id,target_kind,target_id FROM item_use_targets WHERE item_id=" ..
+        validatedID .. " ORDER BY target_kind,target_id"
+    )
+    if queryError then
+        return nil, queryError
+    end
+    local results = {}
+    local index
+    for index = 1, table.getn(rows) do
+        local kind = positiveInteger(rows[index][2])
+        local targetID = positiveInteger(rows[index][3])
+        if kind and self:IsEntityKind(kind) and targetID then
+            table.insert(results, {
+                itemID = tonumber(rows[index][1]),
+                kind = kind,
+                entryID = targetID,
+            })
+        end
+    end
+    self.itemUseCache[validatedID] = results
+    self.cacheSize = self.cacheSize + 1
+    return results, nil
+end
+
+function DB:GetReferenceLootSources(referenceID)
+    local validatedID = positiveInteger(referenceID)
+    if not validatedID then
+        return nil, "invalid reference-loot ID"
+    end
+    if not self:Open() then
+        return nil, QuestBeacon.disabledReason
+    end
+    local cached = self.referenceLootCache[validatedID]
+    if cached then
+        return cached, nil
+    end
+    local columns, rows, queryError = self:QueryRaw(
+        "SELECT reference_id,source_kind,source_id FROM reference_loot_sources WHERE reference_id=" ..
+        validatedID .. " ORDER BY source_kind,source_id"
+    )
+    if queryError then
+        return nil, queryError
+    end
+    local results = {}
+    local index
+    for index = 1, table.getn(rows) do
+        local kind = positiveInteger(rows[index][2])
+        local sourceID = positiveInteger(rows[index][3])
+        if kind and self:IsEntityKind(kind) and sourceID then
+            table.insert(results, {
+                referenceID = tonumber(rows[index][1]),
+                kind = kind,
+                entryID = sourceID,
+            })
+        end
+    end
+    self.referenceLootCache[validatedID] = results
+    self.cacheSize = self.cacheSize + 1
     return results, nil
 end
 
