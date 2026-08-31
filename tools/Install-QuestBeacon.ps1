@@ -28,7 +28,14 @@ if ($modulePaths.Count -eq 0) {
     throw 'QuestBeacon.toc does not list any Lua modules.'
 }
 
-$runtimeAssets = @('img\arrow.tga')
+$runtimeAssets = @(
+    'img\arrow.tga',
+    'img\cluster_mob.tga',
+    'img\cluster_item.tga',
+    'img\cluster_misc.tga',
+    'img\available.tga',
+    'img\complete.tga'
+)
 $manifest = @('QuestBeacon.toc') + $modulePaths + $runtimeAssets + @('db\questbeacon.db')
 foreach ($relativePath in $manifest) {
     if ([IO.Path]::IsPathRooted($relativePath) -or $relativePath -match '(^|[\\/])\.\.([\\/]|$)') {

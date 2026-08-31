@@ -436,6 +436,7 @@ function Navigation:SetTrackingMode(mode, questID, objectiveIndex)
         self.trackedQuestID = nil
         self.trackedObjectiveIndex = nil
         self.manualSignature = nil
+        self.pinnedTarget = nil
         if QuestBeacon.Arrow then
             QuestBeacon.Arrow:SaveTracking()
         end
@@ -467,6 +468,21 @@ function Navigation:SetTrackingMode(mode, questID, objectiveIndex)
         QuestBeacon.Arrow:SaveTracking()
     end
     return true, nil
+end
+
+function Navigation:SelectPinTarget(pin)
+    if not pin or not pin.quest or pin.mapID == nil or pin.x == nil or pin.y == nil then return false end
+    self.trackingMode = "pin"
+    self.pinnedTarget = pin
+    local player = QuestBeacon.PositionService:GetPlayerPosition()
+    self.state = {available=true, player=player, target=pin, candidates={pin}, reasons={}}
+    if QuestBeacon.Arrow then QuestBeacon.Arrow:Refresh(self.state) end
+    return true
+end
+
+function Navigation:ClearPinnedTarget()
+    self:SetTrackingMode("auto")
+    return self:AutoResolve(false)
 end
 
 function Navigation:CycleTarget(direction)
@@ -573,7 +589,13 @@ end
 
 function Navigation:AutoResolve(initial)
     local player = QuestBeacon.PositionService:GetPlayerPosition()
-    local state = self:Resolve(QuestBeacon.QuestService:GetActiveQuests(), player, nil)
+    local state
+    if self.trackingMode == "pin" and self.pinnedTarget then
+        state = {available=true, player=player, target=self.pinnedTarget, candidates={self.pinnedTarget}, reasons={}}
+        self.state = state
+    else
+        state = self:Resolve(QuestBeacon.QuestService:GetActiveQuests(), player, nil)
+    end
     if player.available then
         self.lastAreaID = player.areaID
         self.lastMapID = player.mapID

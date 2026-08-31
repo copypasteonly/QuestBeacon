@@ -15,4 +15,6 @@ Navigation.lua
 Arrow.lua
 Settings.lua
 Tracker.lua
+PinService.lua
+WorldMapPins.lua
 Events.lua
