@@ -30,6 +30,20 @@ function Renderer:GetZoomYards()
     return (indoor and INDOOR_ZOOM or OUTDOOR_ZOOM)[zoom] or 300
 end
 
+function Renderer:GetZoomIndex()
+    if not Minimap or type(Minimap.GetZoom) ~= "function" then return 0 end
+    return tonumber(Minimap:GetZoom()) or 0
+end
+
+function Renderer:ObserveZoom()
+    local zoomIndex = self:GetZoomIndex()
+    if self.zoomIndex == zoomIndex then return false end
+    self.zoomIndex = zoomIndex
+    self.zoomYards = self:GetZoomYards()
+    self.nextForcedRefresh = 0
+    return true
+end
+
 function Renderer:GetPinSize(pin, zoomYards)
     local cluster = pin and string.find(pin.texture or "", "^cluster_") ~= nil
     local referenceSize = cluster and 20 or 16
@@ -85,6 +99,7 @@ function Renderer:RefreshData()
     if player.available then QuestBeacon.PinService:Rebuild(player.areaID, "minimap") end
     self:BuildSpatialIndex()
     self.zoomYards = self:GetZoomYards()
+    self.zoomIndex = self:GetZoomIndex()
     self.rotateMinimap = safeGetCVar("rotateMinimap") == "1"
     self.dirty = false
 end
@@ -140,10 +155,13 @@ function Renderer:RefreshPositions()
     end
     local dataChanged = self.dirty
     if self.dirty then self:RefreshData() end
+    -- OctoWoW can change Minimap:GetZoom() without delivering the vanilla
+    -- zoom event. Watching this integer keeps projection and icon scale in sync.
+    local zoomChanged = self:ObserveZoom()
     local now = type(GetTime) == "function" and GetTime() or 0
     local facing = self.rotateMinimap and (player.facing or 0) or 0
     local zoomYards = self.zoomYards or self:GetZoomYards()
-    local unchanged = not dataChanged and self.lastX == player.x and self.lastY == player.y and
+    local unchanged = not dataChanged and not zoomChanged and self.lastX == player.x and self.lastY == player.y and
         self.lastMapID == player.mapID and self.lastFacing == facing and self.lastZoomYards == zoomYards
     -- Movement stays frame-smooth; while standing still we only do the
     -- occasional safety refresh, matching pfQuest's minimap update behavior.
@@ -189,8 +207,8 @@ function Renderer:MarkDirty()
 end
 
 function Renderer:RefreshZoom()
-    self.zoomYards = self:GetZoomYards()
-    self.nextForcedRefresh = 0
+    self.zoomIndex = nil
+    self:ObserveZoom()
     self:RefreshPositions()
 end
 
