@@ -6,6 +6,7 @@
 ## SavedVariables: QuestBeaconSettings, QuestBeaconHistory
 
 Core.lua
+Scheduler.lua
 Config.lua
 DB.lua
 PositionService.lua
