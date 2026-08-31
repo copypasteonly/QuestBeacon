@@ -8,12 +8,20 @@ Renderer.dirty = true
 local OUTDOOR_ZOOM = {[0]=300,[1]=240,[2]=180,[3]=120,[4]=80,[5]=50}
 local INDOOR_ZOOM = {[0]=466.6666667,[1]=400,[2]=333.3333333,[3]=266.3333333,[4]=200,[5]=133.3333333}
 
+local function safeGetCVar(name)
+    if type(GetCVar) ~= "function" then return nil end
+    -- Some 1.12 clients throw for unknown CVars instead of returning nil.
+    local ok, value = pcall(GetCVar, name)
+    if ok then return value end
+    return nil
+end
+
 function Renderer:GetZoomYards()
     local zoom = tonumber(Minimap:GetZoom()) or 0
     local indoor = false
     if type(GetCVar) == "function" then
-        local inside = tonumber(GetCVar("minimapInsideZoom"))
-        local outside = tonumber(GetCVar("minimapZoom"))
+        local inside = tonumber(safeGetCVar("minimapInsideZoom"))
+        local outside = tonumber(safeGetCVar("minimapZoom"))
         indoor = inside == zoom and inside ~= outside
     end
     return (indoor and INDOOR_ZOOM or OUTDOOR_ZOOM)[zoom] or 300
@@ -67,7 +75,7 @@ function Renderer:RefreshPositions()
     local width, height = Minimap:GetWidth(), Minimap:GetHeight()
     local zoomYards = self:GetZoomYards()
     local radius = math.min(width, height) / 2 - 10
-    local rotate = type(GetCVar) == "function" and GetCVar("rotateMinimap") == "1"
+    local rotate = safeGetCVar("rotateMinimap") == "1"
     local facing = rotate and (player.facing or 0) or 0
     local cosine, sine = math.cos(facing), math.sin(facing)
     local shown = 0
