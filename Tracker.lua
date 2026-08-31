@@ -339,6 +339,7 @@ function Tracker:Initialize()
     local frame = CreateFrame("Frame", "QuestBeaconTrackerFrame", UIParent)
     self.frame = frame
     frame:SetWidth(320) frame:SetHeight(100) frame:SetFrameStrata("HIGH")
+    frame:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background", edgeFile="Interface\\DialogFrame\\UI-DialogBox-Border", tile=true, tileSize=32, edgeSize=32, insets={left=11,right=12,top=12,bottom=11}})
     frame:SetMovable(true) frame:SetClampedToScreen(true) frame:EnableMouse(true) frame:RegisterForDrag("LeftButton")
     self.viewButton = textureButton(frame, "tracker_quests.tga", 3, function() Tracker:CycleView() end)
     self.viewButton:SetScript("OnEnter", function() Tracker:ShowControlTooltip(this, "Quest view", "Cycle All, Watched Only, and Current Zone.") end)
