@@ -14,4 +14,5 @@ QuestService.lua
 Navigation.lua
 Arrow.lua
 Settings.lua
+Tracker.lua
 Events.lua
