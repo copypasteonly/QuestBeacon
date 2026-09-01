@@ -16,6 +16,8 @@ DB.referenceLootCache = {}
 DB.cacheSize = 0
 DB.questIDs = nil
 DB.questCache = {}
+DB.progressionCacheKey = nil
+DB.progressionCache = nil
 DB.areaCache = {}
 DB.candidateAreaCache = {}
 DB.starterAreaCache = {}
@@ -126,6 +128,8 @@ function DB:ClearCache()
     self.cacheSize = 0
     self.questIDs = nil
     self.questCache = {}
+    self.progressionCacheKey = nil
+    self.progressionCache = nil
     self.areaCache = {}
     self.candidateAreaCache = {}
     self.starterAreaCache = {}
@@ -231,6 +235,50 @@ end
 function DB:GetQuestPrerequisites(questID)
     local info, queryError = self:GetQuestInfo(questID)
     return info and info.prerequisites or {}, queryError
+end
+
+function DB:GetProgressedPastQuestIDs(activeQuestIDs)
+    local unique = {}
+    local ids = {}
+    local index
+    for index = 1, table.getn(activeQuestIDs or {}) do
+        local id = positiveInteger(activeQuestIDs[index])
+        if id and not unique[id] then
+            unique[id] = true
+            table.insert(ids, id)
+        end
+    end
+    table.sort(ids)
+    if table.getn(ids) == 0 then return {}, nil end
+    local parts = {}
+    for index = 1, table.getn(ids) do parts[index] = tostring(ids[index]) end
+    local cacheKey = table.concat(parts, ",")
+    if self.progressionCacheKey == cacheKey and self.progressionCache then
+        return self.progressionCache, nil
+    end
+    if not self:Open() then return nil, QuestBeacon.disabledReason end
+    -- An active successor proves a predecessor only along an unambiguous,
+    -- single-prerequisite chain. Branching prerequisite groups are not enough
+    -- evidence to decide which historical quest the player completed.
+    local columns, rows, queryError = self:QueryRaw(
+        "WITH RECURSIVE ancestry(id) AS (" ..
+        "SELECT p.prerequisite_quest_id FROM quest_prerequisites p " ..
+        "WHERE p.quest_id IN (" .. cacheKey .. ") AND " ..
+        "(SELECT COUNT(*) FROM quest_prerequisites s WHERE s.quest_id=p.quest_id)=1 " ..
+        "UNION SELECT p.prerequisite_quest_id FROM quest_prerequisites p " ..
+        "JOIN ancestry a ON a.id=p.quest_id WHERE " ..
+        "(SELECT COUNT(*) FROM quest_prerequisites s WHERE s.quest_id=p.quest_id)=1" ..
+        ") SELECT id FROM ancestry ORDER BY id"
+    )
+    if queryError then return nil, queryError end
+    local result = {}
+    for index = 1, table.getn(rows) do
+        local id = positiveInteger(rows[index][1])
+        if id then result[id] = true end
+    end
+    self.progressionCacheKey = cacheKey
+    self.progressionCache = result
+    return result, nil
 end
 
 function DB:GetArea(areaID)

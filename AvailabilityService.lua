@@ -81,12 +81,23 @@ function Availability:CaptureContext(activeQuests)
     local _, raceToken = UnitRace("player")
     local _, classToken = UnitClass("player")
     local active = {}
+    local activeIDs = {}
     local index
-    for index = 1, table.getn(activeQuests or {}) do active[activeQuests[index].id] = true end
+    for index = 1, table.getn(activeQuests or {}) do
+        active[activeQuests[index].id] = true
+        table.insert(activeIDs, activeQuests[index].id)
+    end
+    local progressedPast = {}
+    local progressionError = nil
+    if QuestBeacon.DB and type(QuestBeacon.DB.GetProgressedPastQuestIDs) == "function" then
+        progressedPast, progressionError = QuestBeacon.DB:GetProgressedPastQuestIDs(activeIDs)
+        if not progressedPast then progressedPast = {} end
+    end
     QuestBeacon.QuestHistory:Initialize()
     return {level=tonumber(UnitLevel("player")) or 0, raceBit=RACE_MASKS[raceToken],
         classBit=CLASS_MASKS[classToken], active=active,
         completed=copySet(QuestBeaconHistory and QuestBeaconHistory.completed),
+        progressedPast=progressedPast, progressionError=progressionError,
         lowLevel=QuestBeacon.Config:Get("availability.lowLevel") and true or false,
         highLevel=QuestBeacon.Config:Get("availability.highLevel") and true or false,
         event=QuestBeacon.Config:Get("availability.event") and true or false, skillRanks={}}
@@ -103,7 +114,8 @@ function Availability:GetSkillRank(context, skillID)
 end
 
 function Availability:IsCandidateAvailable(candidate, context)
-    if context.active[candidate.id] or context.completed[candidate.id] then return false end
+    if context.active[candidate.id] or context.completed[candidate.id] or
+       context.progressedPast[candidate.id] then return false end
     if candidate.minLevel > context.level and
        (not context.highLevel or candidate.minLevel > context.level + 3) then return false end
     if candidate.level < context.level - 4 and not context.lowLevel then return false end
