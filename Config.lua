@@ -106,6 +106,16 @@ function Config:Set(path, value)
     return true
 end
 
+function Config:SetAll(path, value)
+    local settings = self:Initialize()
+    local defaults = self.defaults[path]
+    if type(settings[path]) ~= "table" or type(defaults) ~= "table" then return false end
+    local key
+    for key in pairs(defaults) do settings[path][key] = value and true or false end
+    self:Notify(path, value and true or false)
+    return true
+end
+
 function Config:RegisterListener(owner, callback)
     if owner and type(callback) == "function" then table.insert(self.listeners, {owner=owner, callback=callback}) end
 end
