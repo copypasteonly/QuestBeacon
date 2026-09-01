@@ -57,9 +57,10 @@ end
 
 function Renderer:GetPinSize(pin, zoomYards)
     local cluster = pin and string.find(pin.texture or "", "^cluster_") ~= nil
-    local referenceSize = cluster and 20 or 16
-    local minimum = cluster and 14 or 12
-    local maximum = cluster and 28 or 24
+    local spawn = pin and pin.pinType == "spawn"
+    local referenceSize = spawn and 14 or (cluster and 20 or 16)
+    local minimum = spawn and 10 or (cluster and 14 or 12)
+    local maximum = spawn and 18 or (cluster and 28 or 24)
     local size = referenceSize * REFERENCE_ZOOM_YARDS / (tonumber(zoomYards) or REFERENCE_ZOOM_YARDS)
     return math.floor(math.max(minimum, math.min(maximum, size)) + 0.5)
 end
@@ -115,10 +116,27 @@ function Renderer:ShowTooltip(frame)
         else GameTooltip:AddLine(tostring(row.title), 1, 0.82, 0) end
         GameTooltip:AddLine(tostring(row.text or frame.pin.role), 0.85, 0.85, 0.85)
     end
+    if frame.pin.pinType == "spawn" and (frame.pin.authoredCount or 1) > 1 then
+        GameTooltip:AddLine(tostring(frame.pin.authoredCount) .. " authored spawns at this location", 0.65, 0.85, 1)
+    end
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
     if distance then GameTooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end
     GameTooltip:Show()
+end
+
+local function pinEnabled(pin, settings)
+    if pin.role == "service" then return true end
+    if type(settings) ~= "table" then
+        settings = {objectives=true,itemSources=true,turnIns=true,available=true,
+            spawnPoints=true,objectiveClusters=false}
+    end
+    if not settings[pin.role] then return false end
+    if pin.pinType == "spawn" then return settings.spawnPoints and true or false end
+    if pin.role == "objectives" or pin.role == "itemSources" then
+        return settings.objectiveClusters and true or false
+    end
+    return true
 end
 
 function Renderer:BuildSpatialIndex(plan)
@@ -222,7 +240,7 @@ function Renderer:Discover(player, zoomYards)
                         local pinIndex
                         for pinIndex = 1, table.getn(bucket) do
                             local pin = bucket[pinIndex]
-                            if pin.role == "service" or settings[pin.role] then
+                            if pinEnabled(pin, settings) then
                                 local deltaX = pin.x - player.x
                                 local deltaY = pin.y - player.y
                                 if deltaX * deltaX + deltaY * deltaY <= radiusSquared then table.insert(active, pin) end
@@ -255,7 +273,9 @@ function Renderer:RenderPin(pin, player, width, height, zoomYards, radius, cosin
     if pinChanged then
         frame.pin = pin
         frame.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. pin.texture)
-        if pin.role == "available" or
+        if pin.pinType == "spawn" then
+            frame.texture:SetVertexColor(pin.colorR, pin.colorG, pin.colorB, 1)
+        elseif pin.role == "available" or
            (pin.role == "turnIns" and pin.quest and pin.quest.complete) then
             frame.texture:SetVertexColor(1, 0.8, 0, 1)
         else

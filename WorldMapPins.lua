@@ -88,9 +88,11 @@ end
 
 function Renderer:GetPinDisplaySize(pin, zoom)
     local cluster = pin and string.find(pin.texture or "", "^cluster_") ~= nil
-    local maximum = cluster and 28 or 24
-    local size = 18 + (maximum - 18) * ((tonumber(zoom) or MIN_ZOOM) - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)
-    return math.floor(clamp(size, 18, maximum) + 0.5)
+    local spawn = pin and pin.pinType == "spawn"
+    local minimum = spawn and 14 or 18
+    local maximum = spawn and 18 or (cluster and 28 or 24)
+    local size = minimum + (maximum - minimum) * ((tonumber(zoom) or MIN_ZOOM) - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)
+    return math.floor(clamp(size, minimum, maximum) + 0.5)
 end
 
 function Renderer:ApplyPinSize(frame)
@@ -148,6 +150,7 @@ function Renderer:SetZoom(zoom, cursorX, cursorY)
     self:SetScroll(mapX - focusX / newScale, mapY - focusY / newScale)
     self:RefreshPinSizes()
     self:ApplyPlayerIndicatorSize()
+    self:EnsureCurrent()
     return true
 end
 
@@ -464,16 +467,80 @@ function Renderer:ShowTooltip(frame)
         else tooltip:AddLine(tostring(row.title), 1, 0.82, 0) end
         tooltip:AddLine(tostring(row.text or frame.pin.role), 0.85, 0.85, 0.85)
     end
+    if frame.pin.pinType == "spawn" then
+        local merged = table.getn(frame.pin.spawnMembers or {})
+        if merged > 1 then tooltip:AddLine(tostring(merged) .. " nearby spawn points", 0.65, 0.85, 1) end
+        if merged <= 1 and (frame.pin.authoredCount or 1) > 1 then
+            tooltip:AddLine(tostring(frame.pin.authoredCount) .. " authored spawns at this location", 0.65, 0.85, 1)
+        end
+    end
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
     if distance then tooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end
     tooltip:Show()
 end
 
+local function pinEnabled(pin, settings)
+    if pin.role == "service" then return true end
+    if type(settings) ~= "table" then
+        settings = {objectives=true,itemSources=true,turnIns=true,available=true,
+            spawnPoints=true,objectiveClusters=true}
+    end
+    if not settings[pin.role] then return false end
+    if pin.pinType == "spawn" then return settings.spawnPoints and true or false end
+    if pin.role == "objectives" or pin.role == "itemSources" then
+        return settings.objectiveClusters and true or false
+    end
+    return true
+end
+
+local function copySpawnPin(pin)
+    local result = {}
+    local key, value
+    for key, value in pairs(pin) do result[key] = value end
+    result.associations = {}
+    local index
+    for index = 1, table.getn(pin.associations or {}) do table.insert(result.associations, pin.associations[index]) end
+    result.spawnMembers = {pin}
+    result.associationSeen = {}
+    for index = 1, table.getn(result.associations) do
+        local row = result.associations[index]
+        result.associationSeen[tostring(row.questID) .. ":" .. tostring(row.text)] = true
+    end
+    return result
+end
+
+function Renderer:MergeSpawnForDisplay(state, pin, x, y)
+    local mapScale = (self.baseScale or 1) * (self.zoom or MIN_ZOOM)
+    local bucketX = math.floor(x * state.width * mapScale / 8)
+    local bucketY = math.floor(y * state.height * mapScale / 8)
+    local key = tostring(pin.role) .. ":" .. tostring(pin.kind) .. ":" .. tostring(pin.entryID) .. ":" ..
+        tostring(bucketX) .. ":" .. tostring(bucketY)
+    local existing = state.density[key]
+    if existing then
+        table.insert(existing.spawnMembers, pin)
+        local associationIndex
+        for associationIndex = 1, table.getn(pin.associations or {}) do
+            local row = pin.associations[associationIndex]
+            local associationKey = tostring(row.questID) .. ":" .. tostring(row.text)
+            if not existing.associationSeen[associationKey] then
+                existing.associationSeen[associationKey] = true
+                table.insert(existing.associations, row)
+            end
+        end
+        existing.authoredCount = (existing.authoredCount or 1) + (pin.authoredCount or 1)
+        return nil
+    end
+    local display = copySpawnPin(pin)
+    state.density[key] = display
+    return display
+end
+
 function Renderer:RenderPlan(area, plan, renderKey)
     self.renderGeneration = self.renderGeneration + 1
     local generation = self.renderGeneration
-    local state = {position=1, shown=0, pins=plan.pins, area=area, key=renderKey,
+    local state = {position=1, shown=0, pins=plan.pins, area=area, key=renderKey, density={},
+        settings=QuestBeacon.Config:Get("worldMap"),
         width=WorldMapButton:GetWidth(), height=WorldMapButton:GetHeight()}
     self.pendingRenderKey = renderKey
     self.stats.requested = self.stats.requested + 1
@@ -485,15 +552,20 @@ function Renderer:RenderPlan(area, plan, renderKey)
             local pin = state.pins[state.position]
             state.position = state.position + 1
             count = count + 1
-            if pin.role == "service" or QuestBeacon.Config:Get("worldMap." .. pin.role) then
+            if pinEnabled(pin, state.settings) then
                 local x, y = Renderer:Project(pin, state.area)
                 if x and y then
+                    local displayPin = pin
+                    if pin.pinType == "spawn" then displayPin = Renderer:MergeSpawnForDisplay(state, pin, x, y) end
+                    if displayPin then
                     state.shown = state.shown + 1
                     local frame = Renderer:GetPin(state.shown)
-                    frame.pin = pin
-                    frame.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. pin.texture)
-                    if pin.role == "available" or
-                       (pin.role == "turnIns" and pin.quest and pin.quest.complete) then
+                    frame.pin = displayPin
+                    frame.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. displayPin.texture)
+                    if displayPin.pinType == "spawn" then
+                        frame.texture:SetVertexColor(displayPin.colorR, displayPin.colorG, displayPin.colorB, 1)
+                    elseif displayPin.role == "available" or
+                       (displayPin.role == "turnIns" and displayPin.quest and displayPin.quest.complete) then
                         frame.texture:SetVertexColor(1, 0.8, 0, 1)
                     else
                         frame.texture:SetVertexColor(1, 1, 1, 1)
@@ -502,6 +574,7 @@ function Renderer:RenderPlan(area, plan, renderKey)
                     frame:ClearAllPoints()
                     frame:SetPoint("CENTER", WorldMapButton, "TOPLEFT", x * state.width, -y * state.height)
                     frame:Show()
+                    end
                 end
             end
         end
@@ -559,7 +632,7 @@ function Renderer:EnsureCurrent()
     end
     local width, height = WorldMapButton:GetWidth(), WorldMapButton:GetHeight()
     local renderKey = table.concat({tostring(areaID), tostring(plan.identity), tostring(self.filterRevision),
-        tostring(width), tostring(height)}, ":")
+        tostring(width), tostring(height), tostring(self.zoom or MIN_ZOOM)}, ":")
     if renderKey == self.lastRenderKey or renderKey == self.pendingRenderKey then
         self.stats.skipped = self.stats.skipped + 1
         return

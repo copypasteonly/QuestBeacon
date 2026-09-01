@@ -6,6 +6,10 @@ DB.KIND_OBJECT = 2
 DB.handle = nil
 DB.metadata = nil
 DB.entityCache = {}
+DB.spawnCache = {}
+DB.spawnCacheOrder = {}
+DB.spawnCacheCount = 0
+DB.spawnCacheLimit = 64
 DB.itemSourceCache = {}
 DB.itemUseCache = {}
 DB.referenceLootCache = {}
@@ -113,6 +117,9 @@ end
 
 function DB:ClearCache()
     self.entityCache = {}
+    self.spawnCache = {}
+    self.spawnCacheOrder = {}
+    self.spawnCacheCount = 0
     self.itemSourceCache = {}
     self.itemUseCache = {}
     self.referenceLootCache = {}
@@ -123,6 +130,22 @@ function DB:ClearCache()
     self.candidateAreaCache = {}
     self.starterAreaCache = {}
     self.serviceMarkerCache = {}
+end
+
+function DB:CacheSpawnResult(key, result)
+    if self.spawnCache[key] then return end
+    self.spawnCache[key] = result
+    table.insert(self.spawnCacheOrder, key)
+    self.spawnCacheCount = self.spawnCacheCount + 1
+    self.cacheSize = self.cacheSize + 1
+    if self.spawnCacheCount > self.spawnCacheLimit then
+        local oldest = table.remove(self.spawnCacheOrder, 1)
+        if oldest and self.spawnCache[oldest] then
+            self.spawnCache[oldest] = nil
+            self.spawnCacheCount = self.spawnCacheCount - 1
+            self.cacheSize = self.cacheSize - 1
+        end
+    end
 end
 
 local SERVICE_CATEGORIES = {
@@ -384,6 +407,66 @@ function DB:GetEntityClusters(kind, entryID)
     self.entityCache[cacheKey] = { clusters = clusters, unusableCount = unusableCount }
     self.cacheSize = self.cacheSize + 1
     return clusters, unusableCount, nil
+end
+
+function DB:GetEntitySpawnPointsForScope(kind, entryID, scope, scopeID)
+    local validatedKind = positiveInteger(kind)
+    local validatedID = positiveInteger(entryID)
+    local validatedScopeID = tonumber(scopeID)
+    if not validatedKind or not self:IsEntityKind(validatedKind) or not validatedID or
+        not validatedScopeID or math.floor(validatedScopeID) ~= validatedScopeID or validatedScopeID < 0 or
+        (scope ~= "map" and scope ~= "area") then
+        return nil, 0, "invalid entity spawn scope"
+    end
+    if not self:Open() then return nil, 0, QuestBeacon.disabledReason end
+    local cacheKey = scope .. ":" .. tostring(validatedScopeID) .. ":" ..
+        tostring(validatedKind) .. ":" .. tostring(validatedID)
+    local cached = self.spawnCache[cacheKey]
+    if cached then return cached.points, cached.unusableCount, nil end
+    local scopeClause
+    if scope == "map" then
+        scopeClause = "map_id=" .. validatedScopeID
+    else
+        scopeClause = "(mapped_area_id=" .. validatedScopeID .. " OR (mapped_area_id IS NULL AND area_id=" ..
+            validatedScopeID .. "))"
+    end
+    local columns, rows, queryError = self:QueryRaw(
+        "SELECT kind,entry_id,spawn_id,cluster_id,area_id,mapped_area_id,map_id," ..
+        "world_x,world_y,map_x,map_y,authored_count,conversion_status FROM entity_spawn_points " ..
+        "WHERE kind=" .. validatedKind .. " AND entry_id=" .. validatedID .. " AND " .. scopeClause ..
+        " ORDER BY cluster_id,spawn_id"
+    )
+    if queryError then return nil, 0, queryError end
+    local points = {}
+    local unusableCount = 0
+    local index
+    for index = 1, table.getn(rows) do
+        local row = rows[index]
+        local worldX = nullableNumber(row[8])
+        local worldY = nullableNumber(row[9])
+        local mapID = nullableNumber(row[7])
+        if worldX and worldY and mapID then
+            table.insert(points, {
+                kind=tonumber(row[1]), entryID=tonumber(row[2]), spawnID=tonumber(row[3]),
+                clusterID=tonumber(row[4]), parentClusterID=tonumber(row[4]), areaID=tonumber(row[5]),
+                mappedAreaID=nullableNumber(row[6]), mapID=mapID, x=worldX, y=worldY,
+                mapX=tonumber(row[10]), mapY=tonumber(row[11]), authoredCount=tonumber(row[12]) or 1,
+                conversionStatus=row[13], pointCount=1, radius=0, isNoise=false,
+            })
+        else
+            unusableCount = unusableCount + 1
+        end
+    end
+    self:CacheSpawnResult(cacheKey, {points=points, unusableCount=unusableCount})
+    return points, unusableCount, nil
+end
+
+function DB:GetEntitySpawnPoints(kind, entryID, mapID)
+    return self:GetEntitySpawnPointsForScope(kind, entryID, "map", mapID)
+end
+
+function DB:GetEntitySpawnPointsForArea(kind, entryID, areaID)
+    return self:GetEntitySpawnPointsForScope(kind, entryID, "area", areaID)
 end
 
 function DB:GetItemSources(itemID)

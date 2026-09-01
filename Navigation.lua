@@ -377,10 +377,59 @@ function Navigation:CandidateSignature(target)
     if not target then
         return "none"
     end
-    return table.concat({
+    local signature = table.concat({
         tostring(target.quest.id), tostring(target.objectiveIndex), tostring(target.kind),
         tostring(target.entryID), tostring(target.clusterID), tostring(target.mapID),
     }, ":")
+    if target.exactSpawn and target.spawnID then
+        signature = signature .. ":spawn:" .. tostring(target.spawnID)
+    end
+    return signature
+end
+
+local function copyTarget(target)
+    local result = {}
+    local key, value
+    for key, value in pairs(target or {}) do result[key] = value end
+    return result
+end
+
+function Navigation:ResolveSpawnTarget(target, player, reasons)
+    if not target or target.isFallback or not player or target.mapID ~= player.mapID or
+        not QuestBeacon.DB.GetEntitySpawnPoints or
+        (target.kind ~= QuestBeacon.DB.KIND_MONSTER and target.kind ~= QuestBeacon.DB.KIND_OBJECT) then
+        return target
+    end
+    local points, unusableCount, queryError = QuestBeacon.DB:GetEntitySpawnPoints(
+        target.kind, target.entryID, target.mapID)
+    if queryError then
+        if reasons then increment(reasons, "database_error") end
+        return target
+    end
+    local best = nil
+    local bestDistance = nil
+    local index
+    for index = 1, table.getn(points or {}) do
+        local point = points[index]
+        if point.clusterID == target.clusterID then
+            local candidateDistance = distanceSquared(player, point)
+            if not best or candidateDistance < bestDistance or
+                (candidateDistance == bestDistance and point.spawnID < best.spawnID) then
+                best = point
+                bestDistance = candidateDistance
+            end
+        end
+    end
+    if not best then return target end
+    local resolved = copyTarget(target)
+    resolved.parentClusterID = target.clusterID
+    resolved.spawnID = best.spawnID
+    resolved.x = best.x resolved.y = best.y
+    resolved.mapX = best.mapX resolved.mapY = best.mapY
+    resolved.areaID = best.areaID resolved.mappedAreaID = best.mappedAreaID
+    resolved.authoredCount = best.authoredCount
+    resolved.isSpawnPoint = true
+    return resolved
 end
 
 function Navigation:Resolve(activeQuests, playerPosition, questFilter)
@@ -440,6 +489,7 @@ function Navigation:Resolve(activeQuests, playerPosition, questFilter)
     if self.trackingMode == "manual" and target and questFilter == nil then
         self.manualSignature = self:CandidateSignature(target)
     end
+    target = self:ResolveSpawnTarget(target, playerPosition, reasons)
     self.state = {
         available = target ~= nil, player = playerPosition, target = target,
         candidates = candidates, reasons = reasons,
@@ -497,10 +547,36 @@ end
 
 function Navigation:SelectPinTarget(pin)
     if not pin or not pin.quest or pin.mapID == nil or pin.x == nil or pin.y == nil then return false end
-    self.trackingMode = "pin"
-    self.pinnedTarget = pin
     local player = QuestBeacon.PositionService:GetPlayerPosition()
-    self.state = {available=true, player=player, target=pin, candidates={pin}, reasons={}}
+    local selected = pin
+    if pin.spawnMembers and table.getn(pin.spawnMembers) > 0 and player and player.available then
+        local best = nil
+        local bestDistance = nil
+        local index
+        for index = 1, table.getn(pin.spawnMembers) do
+            local member = pin.spawnMembers[index]
+            local memberDistance = distanceSquared(player, member)
+            if not best or memberDistance < bestDistance or
+                (memberDistance == bestDistance and member.spawnID < best.spawnID) then
+                best = member bestDistance = memberDistance
+            end
+        end
+        if best then
+            selected = copyTarget(pin)
+            selected.spawnID = best.spawnID selected.parentClusterID = best.parentClusterID or best.clusterID
+            selected.clusterID = best.parentClusterID or best.clusterID
+            selected.x = best.x selected.y = best.y selected.mapX = best.mapX selected.mapY = best.mapY
+            selected.exactSpawn = true selected.isSpawnPoint = true
+        end
+    elseif pin.isSpawnPoint then
+        selected = copyTarget(pin)
+        selected.exactSpawn = true
+    else
+        selected = self:ResolveSpawnTarget(pin, player, {})
+    end
+    self.trackingMode = "pin"
+    self.pinnedTarget = selected
+    self.state = {available=true, player=player, target=selected, candidates={selected}, reasons={}}
     if QuestBeacon.Arrow then QuestBeacon.Arrow:Refresh(self.state) end
     return true
 end
@@ -535,7 +611,7 @@ function Navigation:CycleTarget(direction)
     self.trackingMode = "manual"
     self.trackedQuestID = nil
     self.trackedObjectiveIndex = nil
-    self.state.target = candidates[nextIndex]
+    self.state.target = self:ResolveSpawnTarget(candidates[nextIndex], self.state.player, self.state.reasons)
     self.state.available = true
     self.manualSignature = self:CandidateSignature(self.state.target)
     if QuestBeacon.Arrow then

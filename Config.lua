@@ -3,7 +3,7 @@ local Config = QuestBeacon.Config
 
 Config.listeners = {}
 Config.defaults = {
-    configVersion = 2,
+    configVersion = 3,
     point = "CENTER", x = 0, y = -100, scale = 1, shown = true,
     trackingMode = "auto", arrowFontSize = 12,
     trackerShown = true, trackerLocked = false, trackerFontSize = 12,
@@ -14,8 +14,10 @@ Config.defaults = {
     trackerView = "all", replaceNativeTracker = true,
     trackerShowLevels = true, trackerExpandObjectives = false,
     trackerFolds = {},
-    worldMap = { objectives=true, itemSources=true, turnIns=true, available=true },
-    minimap = { objectives=true, itemSources=true, turnIns=true, available=true },
+    worldMap = { objectives=true, itemSources=true, turnIns=true, available=true,
+        spawnPoints=true, objectiveClusters=true },
+    minimap = { objectives=true, itemSources=true, turnIns=true, available=true,
+        spawnPoints=true, objectiveClusters=false },
     worldMapServices = { auctioneer=false, banker=false, battlemaster=false, flight=false,
         innkeeper=false, mailbox=false, meetingstone=false, repair=false, spirithealer=false,
         stablemaster=false, vendor=false },
@@ -71,6 +73,15 @@ function Config:Initialize()
         QuestBeaconSettings.starredQuests = nil
         QuestBeaconSettings.hiddenQuests = nil
         QuestBeaconSettings.configVersion = 2
+    end
+    if (tonumber(QuestBeaconSettings.configVersion) or 0) < 3 then
+        if type(QuestBeaconSettings.worldMap) ~= "table" then QuestBeaconSettings.worldMap = {} end
+        if type(QuestBeaconSettings.minimap) ~= "table" then QuestBeaconSettings.minimap = {} end
+        if QuestBeaconSettings.worldMap.spawnPoints == nil then QuestBeaconSettings.worldMap.spawnPoints = true end
+        if QuestBeaconSettings.worldMap.objectiveClusters == nil then QuestBeaconSettings.worldMap.objectiveClusters = true end
+        if QuestBeaconSettings.minimap.spawnPoints == nil then QuestBeaconSettings.minimap.spawnPoints = true end
+        if QuestBeaconSettings.minimap.objectiveClusters == nil then QuestBeaconSettings.minimap.objectiveClusters = false end
+        QuestBeaconSettings.configVersion = 3
     end
     fill(QuestBeaconSettings, self.defaults)
     QuestBeaconSettings.arrowFontSize = math.max(8, math.min(24, tonumber(QuestBeaconSettings.arrowFontSize) or 12))

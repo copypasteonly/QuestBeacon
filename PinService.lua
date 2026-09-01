@@ -32,7 +32,8 @@ Pins.revision = 1
 Pins.nextIdentity = 0
 Pins.worldAreaID = nil
 Pins.minimapAreaID = nil
-Pins.stats = {requests=0, publishes=0, cancelled=0, lastAreaID=0, lastPinCount=0}
+Pins.stats = {requests=0, publishes=0, cancelled=0, lastAreaID=0, lastPinCount=0,
+    maxSpawnRowsPerSlice=0}
 
 local function positiveInteger(value)
     local number = tonumber(value)
@@ -46,14 +47,42 @@ end
 
 local function addPin(result, seen, pin)
     if not pin.x or not pin.y or pin.mapID == nil then return end
-    local key = pin.role .. ":" .. tostring(pin.mapID) .. ":" .. string.format("%.2f:%.2f", pin.x, pin.y)
+    local sourceKey = ""
+    if pin.pinType == "spawn" then
+        sourceKey = ":" .. tostring(pin.kind) .. ":" .. tostring(pin.entryID)
+    end
+    local key = pin.role .. ":" .. tostring(pin.pinType or "cluster") .. sourceKey .. ":" ..
+        tostring(pin.mapID) .. ":" .. string.format("%.6f:%.6f", pin.x, pin.y)
     local existing = seen[key]
     if existing then
         table.insert(existing.associations, pin.associations[1])
+        if (pin.authoredCount or 1) > (existing.authoredCount or 1) then
+            existing.authoredCount = pin.authoredCount
+        end
         return
     end
     seen[key] = pin
     table.insert(result, pin)
+end
+
+local function positiveModulo(value, divisor)
+    return value - math.floor(value / divisor) * divisor
+end
+
+local function spawnColor(kind, entryID)
+    local hue = positiveModulo((tonumber(kind) or 0) * 9973 + (tonumber(entryID) or 0) * 37, 360) / 60
+    local sector = math.floor(hue)
+    local fraction = hue - sector
+    local low = 0.30
+    local rising = low + 0.70 * fraction
+    local falling = 1 - 0.70 * fraction
+    sector = positiveModulo(sector, 6)
+    if sector == 0 then return 1, rising, low end
+    if sector == 1 then return falling, 1, low end
+    if sector == 2 then return low, 1, rising end
+    if sector == 3 then return low, falling, 1 end
+    if sector == 4 then return rising, low, 1 end
+    return 1, low, falling
 end
 
 local function clusterPin(quest, objective, cluster, role, texture, sourceType)
@@ -61,6 +90,20 @@ local function clusterPin(quest, objective, cluster, role, texture, sourceType)
         clusterID=cluster.clusterID, areaID=cluster.areaID, mappedAreaID=cluster.mappedAreaID,
         mapID=cluster.mapID, x=cluster.x, y=cluster.y, pointCount=cluster.pointCount,
         radius=cluster.radius, isNoise=cluster.isNoise, conversionStatus=cluster.conversionStatus,
+        quest=quest, objective=objective, sourceType=sourceType,
+        associations={{questID=quest.id, title=quest.title, text=objective and objective.text or role}}}
+end
+
+local function spawnPin(quest, objective, point, role, sourceType)
+    local red, green, blue = spawnColor(point.kind, point.entryID)
+    return {available=true, role=role, pinType="spawn", texture="spawn_point",
+        kind=point.kind, entryID=point.entryID, spawnID=point.spawnID,
+        clusterID=point.clusterID, parentClusterID=point.clusterID,
+        areaID=point.areaID, mappedAreaID=point.mappedAreaID, mapID=point.mapID,
+        x=point.x, y=point.y, mapX=point.mapX, mapY=point.mapY,
+        pointCount=1, radius=0, isNoise=false, conversionStatus=point.conversionStatus,
+        authoredCount=point.authoredCount or 1, isSpawnPoint=true,
+        colorR=red, colorG=green, colorB=blue,
         quest=quest, objective=objective, sourceType=sourceType,
         associations={{questID=quest.id, title=quest.title, text=objective and objective.text or role}}}
 end
@@ -99,7 +142,7 @@ function Pins:PlanKey(areaID, availability)
         tostring(historyRevision), tostring(availabilityRevision)}, ":")
 end
 
-function Pins:AddObjectivePins(result, seen, areaID, quest, objective)
+function Pins:AddObjectivePins(result, seen, areaID, quest, objective, pendingTasks)
     if objective.complete or not objective.entryID then return end
     local sources = {}
     if objective.kind == "monster" or objective.kind == "object" then
@@ -120,6 +163,22 @@ function Pins:AddObjectivePins(result, seen, areaID, quest, objective)
                     local role = objective.kind == "item" and "itemSources" or "objectives"
                     local texture = objective.kind == "monster" and "cluster_mob" or "cluster_item"
                     addPin(result, seen, clusterPin(quest, objective, cluster, role, texture, source.sourceType))
+                end
+            end
+        end
+        if QuestBeacon.DB.GetEntitySpawnPointsForArea then
+            local points = QuestBeacon.DB:GetEntitySpawnPointsForArea(source.kind, source.entryID, areaID)
+            if points and table.getn(points) > 0 then
+                local role = objective.kind == "item" and "itemSources" or "objectives"
+                local task = {kind="spawnBatch", quest=quest, objective=objective, role=role,
+                    sourceType=source.sourceType, points=points, pointPosition=1}
+                if pendingTasks then
+                    table.insert(pendingTasks, task)
+                else
+                    local pointIndex
+                    for pointIndex = 1, table.getn(points) do
+                        addPin(result, seen, spawnPin(quest, objective, points[pointIndex], role, source.sourceType))
+                    end
                 end
             end
         end
@@ -162,7 +221,8 @@ function Pins:Publish(state)
         if a.quest.id ~= b.quest.id then return a.quest.id < b.quest.id end
         if a.role ~= b.role then return a.role < b.role end
         if a.entryID ~= b.entryID then return a.entryID < b.entryID end
-        return (a.clusterID or 0) < (b.clusterID or 0)
+        if (a.clusterID or 0) ~= (b.clusterID or 0) then return (a.clusterID or 0) < (b.clusterID or 0) end
+        return (a.spawnID or 0) < (b.spawnID or 0)
     end)
     self.nextIdentity = self.nextIdentity + 1
     local plan = {areaID=state.areaID, key=state.key, identity=self.nextIdentity,
@@ -216,12 +276,28 @@ function Pins:RequestPlan(areaID)
         local count = 0
         while state.position <= table.getn(state.tasks) and count < 12 do
             local task = state.tasks[state.position]
-            state.position = state.position + 1
-            if task.kind == "objective" then
-                Pins:AddObjectivePins(state.pins, state.seen, id, task.quest, task.objective)
+            if task.kind == "spawnBatch" then
+                local processed = 0
+                while task.pointPosition <= table.getn(task.points) and processed < 100 do
+                    local point = task.points[task.pointPosition]
+                    task.pointPosition = task.pointPosition + 1
+                    addPin(state.pins, state.seen,
+                        spawnPin(task.quest, task.objective, point, task.role, task.sourceType))
+                    processed = processed + 1
+                end
+                if processed > Pins.stats.maxSpawnRowsPerSlice then
+                    Pins.stats.maxSpawnRowsPerSlice = processed
+                end
+                if task.pointPosition > table.getn(task.points) then state.position = state.position + 1 end
+                count = 12
+            elseif task.kind == "objective" then
+                state.position = state.position + 1
+                Pins:AddObjectivePins(state.pins, state.seen, id, task.quest, task.objective, state.tasks)
             elseif task.kind == "ender" then
+                state.position = state.position + 1
                 Pins:AddEnderPins(state.pins, state.seen, id, task.quest)
             else
+                state.position = state.position + 1
                 Pins:AddAvailablePin(state.pins, state.seen, task.row)
             end
             count = count + 1
