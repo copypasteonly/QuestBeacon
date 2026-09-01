@@ -59,8 +59,8 @@ local function candidateBefore(first, second)
         return true
     end
     local keys = {
-        "watchRank", "areaRank", "useRank", "noiseRank", "vendorRank", "rateRank", "sourceRank",
-        "distanceSquared", "questLogIndex", "objectiveIndex", "questID", "entryID", "clusterID",
+        "areaRank", "useRank", "noiseRank", "vendorRank", "rateRank", "sourceRank",
+        "distanceSquared", "watchRank", "questLogIndex", "objectiveIndex", "questID", "entryID", "clusterID",
     }
     local index
     for index = 1, table.getn(keys) do
@@ -78,6 +78,28 @@ local function candidateBefore(first, second)
         return first.y < second.y
     end
     return tostring(first.sourceType or "") < tostring(second.sourceType or "")
+end
+
+function Navigation:CollectTurnInCandidates(candidates, quest, player, reasons)
+    local relations, queryError = QuestBeacon.DB:GetQuestEnders(quest.id)
+    if queryError then
+        increment(reasons, "database_error")
+        return
+    end
+    local relationIndex
+    for relationIndex = 1, table.getn(relations or {}) do
+        local relation = relations[relationIndex]
+        if relation.sourceKind == QuestBeacon.DB.KIND_MONSTER or relation.sourceKind == QuestBeacon.DB.KIND_OBJECT then
+            local objective = {
+                index = 9999, text = "Quest turn-in", kind = "turnin",
+                entryID = relation.sourceID, complete = false,
+            }
+            self:AddEntityClusters(candidates, quest, objective, {
+                kind = relation.sourceKind, entryID = relation.sourceID, sourceType = "turnin",
+                effectiveRate = 100, useRank = 1, vendorRank = 1, sourceRank = 0,
+            }, player, reasons)
+        end
+    end
 end
 
 local function sourceBefore(first, second)
@@ -293,7 +315,7 @@ function Navigation:CollectCandidates(activeQuests, player, questFilter, objecti
         local quest = activeQuests[questIndex]
         if not questFilter or quest.id == questFilter then
             if quest.complete then
-                increment(reasons, "quest_complete")
+                self:CollectTurnInCandidates(candidates, quest, player, reasons)
             elseif quest.pendingData then
                 increment(reasons, "quest_pending")
             else

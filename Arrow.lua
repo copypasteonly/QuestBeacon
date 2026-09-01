@@ -234,7 +234,16 @@ function Arrow:GetObjectiveDescription(target)
 end
 
 function Arrow:UpdateTargetText(target)
-    local signature = QuestBeacon.Navigation:CandidateSignature(target)
+    local objective = target.objective or {}
+    -- Candidate identity is intentionally stable while progress text changes.
+    -- Include presentation state so QUEST_LOG_UPDATE can refresh the arrow label.
+    local signature = table.concat({
+        QuestBeacon.Navigation:CandidateSignature(target),
+        tostring(target.quest.title or ""), tostring(target.quest.level or ""),
+        target.quest.complete and "1" or "0", tostring(objective.text or ""),
+        tostring(objective.currentCount or ""), tostring(objective.requiredCount or ""),
+        objective.complete and "1" or "0",
+    }, ":")
     if signature == self.lastTargetSignature then
         return
     end
