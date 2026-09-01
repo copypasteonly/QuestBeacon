@@ -14,13 +14,14 @@ EXPECTED_TABLES = {
     "maps", "areas", "quests", "entities", "entity_clusters", "item_sources",
     "reference_loot_sources", "quest_objective_sources", "quest_starters",
     "quest_enders", "item_use_targets", "quest_fallback_targets", "quest_prerequisites",
-    "quest_area_candidates", "build_metadata",
+    "quest_area_candidates", "service_markers", "build_metadata",
 }
 EXPECTED_INDEXES = {
     "idx_clusters_entry", "idx_clusters_area", "idx_item_sources",
     "idx_reference_sources", "idx_objective_quest", "idx_starters_quest",
     "idx_enders_quest", "idx_fallback_quest", "idx_prerequisites_quest", "idx_quests_eligibility",
     "idx_area_candidates_area", "idx_area_candidates_quest", "idx_clusters_complete",
+    "idx_service_markers_area", "idx_service_markers_entity",
 }
 
 
@@ -110,6 +111,28 @@ def validate_database(path: Path) -> ValidationResult:
         ).fetchone()[0]
         if missing_candidates:
             errors.append(f"quest_area_candidates is missing {missing_candidates} authored starter cluster(s)")
+
+        invalid_services = connection.execute(
+            """SELECT count(*) FROM service_markers s
+               JOIN entity_clusters c ON c.kind=s.source_kind AND c.entry_id=s.source_id
+                 AND c.cluster_id=s.cluster_id
+               WHERE s.category NOT IN ('auctioneer','banker','battlemaster','flight','innkeeper',
+                 'mailbox','meetingstone','repair','spirithealer','stablemaster','vendor')
+                 OR s.faction NOT IN ('A','H','AH')
+                 OR c.world_x IS NULL OR c.world_y IS NULL OR c.map_id IS NULL
+                 OR s.area_id <> COALESCE(c.mapped_area_id,c.area_id)"""
+        ).fetchone()[0]
+        if invalid_services:
+            errors.append(f"service_markers has {invalid_services} invalid marker row(s)")
+        duplicate_services = connection.execute(
+            """SELECT count(*) FROM (
+                 SELECT category,source_kind,source_id,cluster_id,count(*) amount
+                 FROM service_markers GROUP BY category,source_kind,source_id,cluster_id
+                 HAVING amount > 1
+               )"""
+        ).fetchone()[0]
+        if duplicate_services:
+            errors.append(f"service_markers has {duplicate_services} duplicate relationship(s)")
 
         dangling_objectives = connection.execute(
             """SELECT count(*) FROM quest_objective_sources q

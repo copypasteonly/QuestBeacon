@@ -93,6 +93,38 @@ function Settings:Toggle()
     if self.frame:IsVisible() then self.frame:Hide() else self:Refresh() self.frame:Show() end
 end
 
+function Settings:ToggleMarkerFrame()
+    if not self.markerFrame then self:InitializeMarkerFrame() end
+    if self.markerFrame:IsVisible() then self.markerFrame:Hide()
+    else self:Refresh() self.markerFrame:Show() end
+end
+
+function Settings:InitializeMarkerFrame()
+    if self.markerFrame then return end
+    local frame = CreateFrame("Frame", "QuestBeaconMarkerSettingsFrame", UIParent)
+    self.markerFrame = frame
+    frame:SetWidth(620) frame:SetHeight(500)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    frame:SetFrameStrata("DIALOG") frame:SetMovable(true) frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background", edgeFile="Interface\\DialogFrame\\UI-DialogBox-Border", tile=true, tileSize=32, edgeSize=32, insets={left=11,right=12,top=12,bottom=11}})
+    frame:SetScript("OnDragStart", function() this:StartMoving() end)
+    frame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+    self:CreateLabel(frame, "Map Service Markers", 24, -20, 16)
+    self:CreateButton(frame, "X", 570, -15, 25, function() Settings.markerFrame:Hide() end)
+    self:CreateLabel(frame, "World Map", 45, -55, 13)
+    self:CreateLabel(frame, "Minimap", 330, -55, 13)
+    local categories = QuestBeacon.ServiceMarkerService.categories
+    local index
+    for index = 1, table.getn(categories) do
+        local category = categories[index]
+        local y = -72 - (index - 1) * 34
+        self:CreateCheck(frame, category.label, "worldMapServices." .. category.key, 45, y)
+        self:CreateCheck(frame, category.label, "minimapServices." .. category.key, 330, y)
+    end
+    frame:Hide()
+end
+
 function Settings:Initialize()
     if self.frame then return end
     local frame = CreateFrame("Frame", "QuestBeaconSettingsFrame", UIParent)
@@ -144,6 +176,7 @@ function Settings:Initialize()
     self:CreateCheck(frame, "Show quests above level +3", "availability.highLevel", 220, -305)
     self:CreateCheck(frame, "Show event quests", "availability.event", 220, -340)
     self:CreateSlider(frame, "Tracker opacity", "trackerOpacity", 0, 100, 415, -245)
+    self:CreateButton(frame, "Service markers", 415, -350, 165, function() Settings:ToggleMarkerFrame() end)
     self:CreateButton(frame, "Reset interface", 220, -400, 140, function()
         QuestBeacon.Config:ResetUI()
         Settings:Refresh()

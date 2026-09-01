@@ -77,7 +77,9 @@ function Renderer:GetPin(index)
     local frame = CreateFrame("Button", nil, WorldMapButton)
     frame:SetWidth(18) frame:SetHeight(18) frame:SetFrameLevel(20) frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
-    frame:SetScript("OnClick", function() QuestBeacon.PinService:SelectPin(this.pin) end)
+    frame:SetScript("OnClick", function()
+        if this.pin and this.pin.role ~= "service" then QuestBeacon.PinService:SelectPin(this.pin) end
+    end)
     frame:SetScript("OnEnter", function() Renderer:ShowTooltip(this) end)
     frame:SetScript("OnLeave", function() if WorldMapTooltip then WorldMapTooltip:Hide() elseif GameTooltip then GameTooltip:Hide() end end)
     self.pool[index] = frame
@@ -445,6 +447,17 @@ function Renderer:ShowTooltip(frame)
     tooltip:SetOwner(frame, "ANCHOR_RIGHT")
     local associations = frame.pin.associations or {}
     local index
+    if frame.pin.role == "service" then
+        tooltip:SetText(tostring(frame.pin.name or "Service location"))
+        for index = 1, table.getn(associations) do
+            tooltip:AddLine(tostring(associations[index].text or "Service"), 0.85, 0.85, 0.85)
+        end
+        local player = QuestBeacon.PositionService:GetPlayerPosition()
+        local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
+        if distance then tooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end
+        tooltip:Show()
+        return
+    end
     for index = 1, table.getn(associations) do
         local row = associations[index]
         if index == 1 then tooltip:SetText("[" .. tostring(frame.pin.quest.level or 0) .. "] " .. tostring(row.title))
@@ -472,7 +485,7 @@ function Renderer:RenderPlan(area, plan, renderKey)
             local pin = state.pins[state.position]
             state.position = state.position + 1
             count = count + 1
-            if QuestBeacon.Config:Get("worldMap." .. pin.role) then
+            if pin.role == "service" or QuestBeacon.Config:Get("worldMap." .. pin.role) then
                 local x, y = Renderer:Project(pin, state.area)
                 if x and y then
                     state.shown = state.shown + 1
@@ -541,6 +554,9 @@ function Renderer:EnsureCurrent()
         return
     end
     self.waitingAreaID = nil
+    if QuestBeacon.ServiceMarkerService then
+        plan = QuestBeacon.ServiceMarkerService:GetCombinedPlan(areaID, "world", plan)
+    end
     local width, height = WorldMapButton:GetWidth(), WorldMapButton:GetHeight()
     local renderKey = table.concat({tostring(areaID), tostring(plan.identity), tostring(self.filterRevision),
         tostring(width), tostring(height)}, ":")

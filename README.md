@@ -10,6 +10,7 @@ QuestBeacon is a lightweight quest navigation addon for [OctoWoW](https://octowo
 - Directional arrow and distance readout for the selected quest target
 - Quest tracker with watch controls, objective folding, zone views, and distance or level sorting
 - World-map and minimap pins for objectives, item sources, turn-ins, and available quests
+- Optional world-map and minimap markers for banks, vendors, repairs, travel, and other services
 - Deterministic spawn clustering and item-source resolution
 - Quest completion history and configurable availability filters
 - Frame-budgeted database work to keep the 1.12 client responsive
@@ -36,7 +37,7 @@ QuestBeacon disables itself with a chat message if a required API or HearthDB fu
 
 ## Getting started
 
-Use `/qbeacon settings` or the cog button on the tracker to configure the arrow, tracker, map pins, minimap pins, and available-quest filters.
+Use `/qbeacon settings` or the cog button on the tracker to configure the arrow, tracker, map pins, minimap pins, service markers, and available-quest filters.
 
 - Click a quest title to fold or unfold its objectives.
 - Right-click a quest title to open it in the quest log.

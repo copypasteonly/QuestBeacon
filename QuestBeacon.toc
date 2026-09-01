@@ -19,6 +19,7 @@ Arrow.lua
 Settings.lua
 Tracker.lua
 PinService.lua
+ServiceMarkerService.lua
 WorldMapPins.lua
 MinimapPins.lua
 Events.lua

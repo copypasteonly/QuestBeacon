@@ -79,7 +79,9 @@ function Renderer:GetPin(index)
     frame:SetWidth(14) frame:SetHeight(14) frame:SetFrameLevel(Minimap:GetFrameLevel() + 5)
     frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
-    frame:SetScript("OnClick", function() QuestBeacon.PinService:SelectPin(this.pin) end)
+    frame:SetScript("OnClick", function()
+        if this.pin and this.pin.role ~= "service" then QuestBeacon.PinService:SelectPin(this.pin) end
+    end)
     frame:SetScript("OnEnter", function() Renderer:ShowTooltip(this) end)
     frame:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     self.pool[index] = frame
@@ -96,6 +98,17 @@ function Renderer:ShowTooltip(frame)
     GameTooltip:SetOwner(frame, "ANCHOR_LEFT")
     local associations = frame.pin.associations or {}
     local index
+    if frame.pin.role == "service" then
+        GameTooltip:SetText(tostring(frame.pin.name or "Service location"))
+        for index = 1, table.getn(associations) do
+            GameTooltip:AddLine(tostring(associations[index].text or "Service"), 0.85, 0.85, 0.85)
+        end
+        local player = QuestBeacon.PositionService:GetPlayerPosition()
+        local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
+        if distance then GameTooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end
+        GameTooltip:Show()
+        return
+    end
     for index = 1, table.getn(associations) do
         local row = associations[index]
         if index == 1 then GameTooltip:SetText("[" .. tostring(frame.pin.quest.level or 0) .. "] " .. tostring(row.title))
@@ -167,6 +180,9 @@ function Renderer:RefreshPlan()
         end
         return
     end
+    if QuestBeacon.ServiceMarkerService then
+        plan = QuestBeacon.ServiceMarkerService:GetCombinedPlan(self.areaID, "minimap", plan)
+    end
     self.planAreaID = self.areaID
     if self.planIdentity ~= plan.identity then self:BuildSpatialIndex(plan) end
     self.planDirty = false
@@ -206,7 +222,7 @@ function Renderer:Discover(player, zoomYards)
                         local pinIndex
                         for pinIndex = 1, table.getn(bucket) do
                             local pin = bucket[pinIndex]
-                            if settings[pin.role] then
+                            if pin.role == "service" or settings[pin.role] then
                                 local deltaX = pin.x - player.x
                                 local deltaY = pin.y - player.y
                                 if deltaX * deltaX + deltaY * deltaY <= radiusSquared then table.insert(active, pin) end
@@ -320,6 +336,7 @@ function Renderer:Initialize()
     QuestBeacon.Config:RegisterListener(self, function(owner, path)
         if string.find(path or "", "^minimap") or path == "reset" then
             owner.filterRevision = owner.filterRevision + 1
+            owner.planDirty = true
             owner.discoveryDirty = true
             owner:RefreshPositions()
         end

@@ -16,6 +16,12 @@ Config.defaults = {
     trackerFolds = {},
     worldMap = { objectives=true, itemSources=true, turnIns=true, available=true },
     minimap = { objectives=true, itemSources=true, turnIns=true, available=true },
+    worldMapServices = { auctioneer=false, banker=false, battlemaster=false, flight=false,
+        innkeeper=false, mailbox=false, meetingstone=false, repair=false, spirithealer=false,
+        stablemaster=false, vendor=false },
+    minimapServices = { auctioneer=false, banker=false, battlemaster=false, flight=false,
+        innkeeper=false, mailbox=false, meetingstone=false, repair=false, spirithealer=false,
+        stablemaster=false, vendor=false },
     availability = { lowLevel=false, highLevel=false, event=false },
 }
 

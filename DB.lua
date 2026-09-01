@@ -15,6 +15,7 @@ DB.questCache = {}
 DB.areaCache = {}
 DB.candidateAreaCache = {}
 DB.starterAreaCache = {}
+DB.serviceMarkerCache = {}
 
 local function positiveInteger(value)
     local number = tonumber(value)
@@ -121,6 +122,57 @@ function DB:ClearCache()
     self.areaCache = {}
     self.candidateAreaCache = {}
     self.starterAreaCache = {}
+    self.serviceMarkerCache = {}
+end
+
+local SERVICE_CATEGORIES = {
+    auctioneer=true, banker=true, battlemaster=true, flight=true, innkeeper=true,
+    mailbox=true, meetingstone=true, repair=true, spirithealer=true,
+    stablemaster=true, vendor=true,
+}
+
+function DB:GetServiceMarkersForArea(areaID, categories, faction)
+    local id = positiveInteger(areaID)
+    if not id then return nil, "invalid area ID" end
+    local selected = {}
+    local category
+    for category in pairs(categories or {}) do
+        if SERVICE_CATEGORIES[category] and categories[category] then table.insert(selected, category) end
+    end
+    table.sort(selected)
+    if table.getn(selected) == 0 then return {}, nil end
+    local factionCode = faction == "H" and "H" or faction == "A" and "A" or ""
+    local cacheKey = tostring(id) .. ":" .. factionCode .. ":" .. table.concat(selected, ",")
+    if self.serviceMarkerCache[cacheKey] then return self.serviceMarkerCache[cacheKey], nil end
+    if not self:Open() then return nil, QuestBeacon.disabledReason end
+    local quoted = {}
+    local index
+    for index = 1, table.getn(selected) do quoted[index] = "'" .. selected[index] .. "'" end
+    local factionClause = "s.faction='AH'"
+    if factionCode ~= "" then factionClause = "(s.faction='AH' OR s.faction='" .. factionCode .. "')" end
+    local columns, rows, queryError = self:QueryRaw(
+        "SELECT s.category,s.faction,c.kind,c.entry_id,c.cluster_id,c.area_id,c.mapped_area_id," ..
+        "c.map_id,c.world_x,c.world_y,c.map_x,c.map_y,c.point_count,c.radius,c.is_noise," ..
+        "c.conversion_status,e.name_en_us FROM service_markers s " ..
+        "JOIN entity_clusters c ON c.kind=s.source_kind AND c.entry_id=s.source_id AND c.cluster_id=s.cluster_id " ..
+        "JOIN entities e ON e.kind=s.source_kind AND e.entry_id=s.source_id " ..
+        "WHERE s.area_id=" .. id .. " AND s.category IN (" .. table.concat(quoted, ",") .. ") AND " ..
+        factionClause .. " ORDER BY c.kind,c.entry_id,c.cluster_id,s.category"
+    )
+    if queryError then return nil, queryError end
+    local results = {}
+    for index = 1, table.getn(rows) do
+        local row = rows[index]
+        table.insert(results, {category=row[1], faction=row[2], kind=tonumber(row[3]),
+            entryID=tonumber(row[4]), clusterID=tonumber(row[5]), areaID=tonumber(row[6]),
+            mappedAreaID=nullableNumber(row[7]), mapID=tonumber(row[8]), x=tonumber(row[9]),
+            y=tonumber(row[10]), mapX=tonumber(row[11]), mapY=tonumber(row[12]),
+            pointCount=tonumber(row[13]), radius=tonumber(row[14]), isNoise=booleanNumber(row[15]),
+            conversionStatus=row[16], name=row[17]})
+    end
+    self.serviceMarkerCache[cacheKey] = results
+    self.cacheSize = self.cacheSize + 1
+    return results, nil
 end
 
 function DB:GetQuestInfo(questID)

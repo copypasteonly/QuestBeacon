@@ -18,6 +18,10 @@ from questbeacon_db.schema import SCHEMA_SQL, SCHEMA_VERSION
 
 
 ENTITY_KIND = {"U": 1, "O": 2, "I": 3, "V": 4, "R": 5, "A": 6, "IR": 7}
+SERVICE_CATEGORIES = (
+    "auctioneer", "banker", "battlemaster", "flight", "innkeeper", "mailbox",
+    "meetingstone", "repair", "spirithealer", "stablemaster", "vendor",
+)
 
 
 def _items(value: Any) -> list[tuple[Any, Any]]:
@@ -174,6 +178,35 @@ def _area_candidate_rows(
     return sorted(rows)
 
 
+def _service_marker_rows(
+    snapshot: PfQuestSnapshot,
+    clusters: list[tuple[Any, ...]],
+) -> list[tuple[str, str, int, int, int, int]]:
+    clusters_by_entity: dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
+    for row in clusters:
+        kind, entry_id, cluster_id, area_id, mapped_area_id, _, world_x, world_y = row[:8]
+        if world_x is None or world_y is None:
+            continue
+        resolved_area_id = int(mapped_area_id) if mapped_area_id is not None else int(area_id)
+        clusters_by_entity[(int(kind), int(entry_id))].append((int(cluster_id), resolved_area_id))
+
+    rows: set[tuple[str, str, int, int, int, int]] = set()
+    meta = snapshot.data.get("meta", {})
+    for category in SERVICE_CATEGORIES:
+        relations = meta.get(category, {})
+        for raw_entry_id, raw_faction in _items(relations):
+            entry_id = int(raw_entry_id)
+            kind = ENTITY_KIND["O"] if entry_id < 0 else ENTITY_KIND["U"]
+            entry_id = abs(entry_id)
+            faction_value = str(raw_faction or "")
+            faction = ("A" if "A" in faction_value else "") + ("H" if "H" in faction_value else "")
+            if not faction:
+                faction = "AH"
+            for cluster_id, area_id in clusters_by_entity.get((kind, entry_id), []):
+                rows.add((category, faction, kind, entry_id, cluster_id, area_id))
+    return sorted(rows)
+
+
 def _fallback_rows(
     objectives: list[tuple[int, None, int, int, int]],
     snapshot: PfQuestSnapshot,
@@ -244,6 +277,7 @@ def _write_database(
     fallback_rows = _fallback_rows(objective_rows, snapshot, converter)
     prerequisite_rows = _prerequisite_rows(quests)
     area_candidate_rows = _area_candidate_rows(starter_rows, cluster_rows)
+    service_marker_rows = _service_marker_rows(snapshot, cluster_rows)
 
     connection = sqlite3.connect(path)
     try:
@@ -330,6 +364,9 @@ def _write_database(
             _insert_all(connection, "item_use_targets", ("item_id", "target_kind", "target_id"), sorted(set(use_rows)))
             _insert_all(connection, "quest_fallback_targets", ("quest_id", "objective_index", "source_kind", "source_id", "area_id",
                         "mapped_area_id", "map_id", "world_x", "world_y", "map_x", "map_y", "conversion_status"), fallback_rows)
+            _insert_all(connection, "service_markers",
+                        ("category", "faction", "source_kind", "source_id", "cluster_id", "area_id"),
+                        service_marker_rows)
             snapshot_id = hashlib.sha256(
                 "\n".join(f"{key}={value}" for key, value in sorted(snapshot.commits.items())).encode("ascii")
             ).hexdigest()
@@ -348,6 +385,6 @@ def _write_database(
         "database": str(path), "schema_version": SCHEMA_VERSION,
         "counts": {"quests": len(quests), "clusters": len(cluster_rows), "objectives": len(objective_rows),
                    "starters": len(starter_rows), "enders": len(ender_rows), "fallbacks": len(fallback_rows),
-                   "prerequisites": len(prerequisite_rows)},
+                   "prerequisites": len(prerequisite_rows), "service_markers": len(service_marker_rows)},
         "coordinates": dict(sorted(conversion_stats.items())), "source_commits": snapshot.commits,
     }
