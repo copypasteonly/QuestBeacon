@@ -188,9 +188,11 @@ function Pins:RequestPlan(areaID)
     end
     local tasks = {}
     local quests = QuestBeacon.QuestService:GetActiveQuests()
+    local activeQuestIDs = {}
     local questIndex, objectiveIndex
     for questIndex = 1, table.getn(quests) do
         local quest = quests[questIndex]
+        activeQuestIDs[quest.id] = true
         for objectiveIndex = 1, table.getn(quest.objectives) do
             table.insert(tasks, {kind="objective", quest=quest, objective=quest.objectives[objectiveIndex]})
         end
@@ -200,7 +202,7 @@ function Pins:RequestPlan(areaID)
         local rows = QuestBeacon.DB:GetQuestStarterClustersForArea(id)
         local rowIndex
         for rowIndex = 1, table.getn(rows or {}) do
-            if availability.available[rows[rowIndex].questID] then
+            if availability.available[rows[rowIndex].questID] and not activeQuestIDs[rows[rowIndex].questID] then
                 table.insert(tasks, {kind="available", row=rows[rowIndex]})
             end
         end

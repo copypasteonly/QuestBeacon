@@ -73,7 +73,7 @@ function Availability:ObserveQuestState(activeQuests)
     local parts = {}
     for index = 1, table.getn(ids) do parts[index] = tostring(ids[index]) end
     local signature = table.concat(parts, ",")
-    if self.questSignature ~= nil and self.questSignature ~= signature then self:Invalidate("active quests") end
+    if self.questSignature ~= signature then self:Invalidate("active quests") end
     self.questSignature = signature
 end
 
