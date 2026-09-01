@@ -239,8 +239,9 @@ function Renderer:RenderPin(pin, player, width, height, zoomYards, radius, cosin
     if pinChanged then
         frame.pin = pin
         frame.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. pin.texture)
-        if pin.role == "available" or pin.role == "turnIns" then
-            frame.texture:SetVertexColor(1, 0.82, 0, 1)
+        if pin.role == "available" or
+           (pin.role == "turnIns" and pin.quest and pin.quest.complete) then
+            frame.texture:SetVertexColor(1, 0.8, 0, 1)
         else
             frame.texture:SetVertexColor(1, 1, 1, 1)
         end

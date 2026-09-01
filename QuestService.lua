@@ -292,6 +292,7 @@ function QuestService:BuildQuest(entry)
     self.pendingRequests[entry.id] = nil self.failedRequests[entry.id] = nil
     local rawObjectiveCount = GetNumQuestLeaderBoards(entry.logIndex)
     local objectiveCount = tonumber(rawObjectiveCount) or 0
+    if objectiveCount == 0 then quest.complete = true end
     local objectiveIndex
     for objectiveIndex = 1, objectiveCount do
         table.insert(quest.objectives, self:BuildObjective(entry.logIndex, objectiveIndex))
