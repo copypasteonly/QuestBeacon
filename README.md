@@ -7,9 +7,9 @@ QuestBeacon is a lightweight quest navigation addon for [OctoWoW](https://octowo
 
 ## Features
 
-- Directional arrow and distance readout for the selected quest target
+- Directional arrow and distance readout aimed at an authored objective spawn point
 - Quest tracker with watch controls, objective folding, zone views, and distance or level sorting
-- World-map and minimap pins for objectives, item sources, turn-ins, and available quests
+- World-map and minimap pins for objectives, colored spawn points, item sources, turn-ins, and available quests
 - Optional world-map and minimap markers for banks, vendors, repairs, travel, and other services
 - Deterministic spawn clustering and item-source resolution
 - Quest completion history and configurable availability filters
@@ -44,6 +44,12 @@ Use `/qbeacon settings` or the cog button on the tracker to configure the arrow,
 - Ctrl-click a quest title to select its target and open the relevant world-map area.
 - Click an objective or a map pin to navigate to it.
 - Shift-drag the arrow to move it, Shift-scroll to resize it, or Shift-right-click it to reset it.
+
+Objective spawn circles use a stable color for each mob or object. By default the world map combines
+summary cluster icons with spawn circles, while the minimap shows nearby spawn circles without duplicate
+objective clusters. Dense world-map circles merge when they overlap and separate as the map is zoomed in;
+clicking a circle still selects an exact authored spawn location. These layers can be controlled independently
+under the World Map and Minimap settings.
 
 The main slash commands are:
 
