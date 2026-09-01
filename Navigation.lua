@@ -96,7 +96,7 @@ function Navigation:CollectTurnInCandidates(candidates, quest, player, reasons)
             }
             self:AddEntityClusters(candidates, quest, objective, {
                 kind = relation.sourceKind, entryID = relation.sourceID, sourceType = "turnin",
-                effectiveRate = 100, useRank = 1, vendorRank = 1, sourceRank = 0,
+                effectiveRate = 100, useRank = 1, noiseRank = 0, vendorRank = 1, sourceRank = 0,
             }, player, reasons)
         end
     end
@@ -153,7 +153,9 @@ function Navigation:BuildCandidate(quest, objective, cluster, player, source)
         watchRank = QuestBeacon.WatchService and QuestBeacon.WatchService:IsWatched(quest) and 0 or 1,
         areaRank = areaRank(player, cluster),
         useRank = source.useRank or 1,
-        noiseRank = cluster.isNoise and 1 or 0,
+        -- A quest relation can make a singleton ender authoritative even though
+        -- spatial clustering correctly labels the one-point cluster as noise.
+        noiseRank = source.noiseRank or (cluster.isNoise and 1 or 0),
         vendorRank = source.vendorRank or 1,
         rateRank = -(source.effectiveRate or 100),
         sourceRank = source.sourceRank or 0,
