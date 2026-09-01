@@ -58,9 +58,13 @@ local function candidateBefore(first, second)
     if not second then
         return true
     end
+    -- Watching a quest is an explicit navigation preference. Item-use targets,
+    -- vendors, and non-noise clusters remain correctness gates; drop rate and
+    -- source quality only break ties after nearby authored targets are compared.
     local keys = {
-        "areaRank", "useRank", "noiseRank", "vendorRank", "rateRank", "sourceRank",
-        "distanceSquared", "watchRank", "questLogIndex", "objectiveIndex", "questID", "entryID", "clusterID",
+        "watchRank", "areaRank", "useRank", "noiseRank", "vendorRank", "distanceSquared",
+        "rateRank", "sourceRank", "questLogIndex", "objectiveIndex",
+        "questID", "entryID", "clusterID",
     }
     local index
     for index = 1, table.getn(keys) do
