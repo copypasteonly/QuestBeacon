@@ -351,7 +351,7 @@ function QuestService:UpdateStateRevision(activeQuests)
             table.insert(parts, table.concat({tostring(objective.index), tostring(objective.kind or ""),
                 tostring(objective.entryID or 0), objective.complete and "1" or "0",
                 tostring(objective.currentCount or ""), tostring(objective.requiredCount or ""),
-                tostring(objective.unresolvedReason or "")}, ":"))
+                tostring(objective.text or ""), tostring(objective.unresolvedReason or "")}, ":"))
         end
     end
     local signature = table.concat(parts, "|")

@@ -57,7 +57,7 @@ local function addPin(result, seen, pin)
 end
 
 local function clusterPin(quest, objective, cluster, role, texture, sourceType)
-    return {role=role, texture=texture, kind=cluster.kind, entryID=cluster.entryID,
+    return {available=true, role=role, texture=texture, kind=cluster.kind, entryID=cluster.entryID,
         clusterID=cluster.clusterID, areaID=cluster.areaID, mappedAreaID=cluster.mappedAreaID,
         mapID=cluster.mapID, x=cluster.x, y=cluster.y, pointCount=cluster.pointCount,
         radius=cluster.radius, isNoise=cluster.isNoise, conversionStatus=cluster.conversionStatus,
@@ -127,6 +127,7 @@ function Pins:AddObjectivePins(result, seen, areaID, quest, objective)
 end
 
 function Pins:AddEnderPins(result, seen, areaID, quest)
+    if not quest.complete then return end
     local relations = QuestBeacon.DB:GetQuestEnders(quest.id)
     if not relations then return end
     local index
@@ -140,7 +141,7 @@ function Pins:AddEnderPins(result, seen, areaID, quest)
                     local cluster = clusters[clusterIndex]
                     if areaMatches(cluster, areaID) then
                         local objective = {index=9999, kind="turnin", entryID=relation.sourceID,
-                            text=quest.complete and "Quest turn-in" or "Possible turn-in"}
+                            text="Quest turn-in"}
                         addPin(result, seen, clusterPin(quest, objective, cluster, "turnIns", "complete", "turnin"))
                     end
                 end
