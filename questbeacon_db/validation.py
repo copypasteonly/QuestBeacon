@@ -11,7 +11,7 @@ from questbeacon_db.schema import SCHEMA_VERSION
 
 
 EXPECTED_TABLES = {
-    "maps", "areas", "quests", "entities", "entity_clusters", "item_sources",
+    "maps", "areas", "quests", "entities", "entity_clusters", "entity_spawn_points", "item_sources",
     "reference_loot_sources", "quest_objective_sources", "quest_starters",
     "quest_enders", "item_use_targets", "quest_fallback_targets", "quest_prerequisites",
     "quest_area_candidates", "service_markers", "build_metadata",
@@ -21,6 +21,7 @@ EXPECTED_INDEXES = {
     "idx_reference_sources", "idx_objective_quest", "idx_starters_quest",
     "idx_enders_quest", "idx_fallback_quest", "idx_prerequisites_quest", "idx_quests_eligibility",
     "idx_area_candidates_area", "idx_area_candidates_quest", "idx_clusters_complete",
+    "idx_spawns_entity_map", "idx_spawns_entity_area", "idx_spawns_entity_mapped_area",
     "idx_service_markers_area", "idx_service_markers_entity",
 }
 
@@ -89,6 +90,46 @@ def validate_database(path: Path) -> ValidationResult:
         ).fetchone()[0]
         if converted_missing:
             errors.append(f"entity_clusters has {converted_missing} converted row(s) without world coordinates")
+        invalid_spawns = connection.execute(
+            """SELECT count(*) FROM entity_spawn_points s
+               JOIN entity_clusters c ON c.kind=s.kind AND c.entry_id=s.entry_id AND c.cluster_id=s.cluster_id
+               WHERE s.authored_count < 1 OR s.area_id <> c.area_id
+                 OR COALESCE(s.mapped_area_id,-1) <> COALESCE(c.mapped_area_id,-1)
+                 OR COALESCE(s.map_id,-1) <> COALESCE(c.map_id,-1)
+                 OR s.conversion_status <> c.conversion_status
+                 OR (s.world_x IS NULL) <> (s.world_y IS NULL)"""
+        ).fetchone()[0]
+        if invalid_spawns:
+            errors.append(f"entity_spawn_points has {invalid_spawns} invalid row(s)")
+        converted_spawns_missing = connection.execute(
+            "SELECT count(*) FROM entity_spawn_points WHERE conversion_status LIKE 'converted_%' "
+            "AND (world_x IS NULL OR world_y IS NULL OR map_id IS NULL)"
+        ).fetchone()[0]
+        if converted_spawns_missing:
+            errors.append(f"entity_spawn_points has {converted_spawns_missing} converted row(s) without world coordinates")
+        invalid_spawn_ids = connection.execute(
+            """SELECT count(*) FROM (
+                 SELECT kind,entry_id,min(spawn_id) minimum,max(spawn_id) maximum,count(*) amount
+                 FROM entity_spawn_points GROUP BY kind,entry_id
+                 HAVING minimum <> 1 OR maximum <> amount
+               )"""
+        ).fetchone()[0]
+        if invalid_spawn_ids:
+            errors.append(f"entity_spawn_points has {invalid_spawn_ids} non-contiguous entity ID set(s)")
+        cluster_membership_mismatch = connection.execute(
+            """SELECT count(*) FROM entity_clusters c
+               WHERE c.point_count <> (SELECT count(*) FROM entity_spawn_points s
+                 WHERE s.kind=c.kind AND s.entry_id=c.entry_id AND s.cluster_id=c.cluster_id)"""
+        ).fetchone()[0]
+        if cluster_membership_mismatch:
+            errors.append(f"entity_clusters has {cluster_membership_mismatch} point-count mismatch(es)")
+        authored_count_mismatch = connection.execute(
+            """SELECT count(*) FROM entities e
+               WHERE e.coordinate_count <> COALESCE((SELECT sum(s.authored_count) FROM entity_spawn_points s
+                 WHERE s.kind=e.kind AND s.entry_id=e.entry_id),0)"""
+        ).fetchone()[0]
+        if authored_count_mismatch:
+            errors.append(f"entities has {authored_count_mismatch} authored coordinate-count mismatch(es)")
 
         invalid_candidates = connection.execute(
             """SELECT count(*) FROM quest_area_candidates a

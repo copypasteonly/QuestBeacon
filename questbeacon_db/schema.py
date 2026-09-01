@@ -1,9 +1,9 @@
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys=ON;
 PRAGMA application_id=1363298644;
-PRAGMA user_version=5;
+PRAGMA user_version=6;
 
 CREATE TABLE maps (
   id INTEGER PRIMARY KEY,
@@ -64,6 +64,22 @@ CREATE TABLE entity_clusters (
   conversion_status TEXT NOT NULL,
   PRIMARY KEY (kind, entry_id, cluster_id),
   FOREIGN KEY (kind, entry_id) REFERENCES entities(kind, entry_id)
+);
+CREATE TABLE entity_spawn_points (
+  kind INTEGER NOT NULL,
+  entry_id INTEGER NOT NULL,
+  spawn_id INTEGER NOT NULL,
+  cluster_id INTEGER NOT NULL,
+  area_id INTEGER NOT NULL,
+  mapped_area_id INTEGER,
+  map_id INTEGER,
+  world_x REAL, world_y REAL,
+  map_x REAL NOT NULL, map_y REAL NOT NULL,
+  authored_count INTEGER NOT NULL CHECK (authored_count >= 1),
+  conversion_status TEXT NOT NULL,
+  PRIMARY KEY (kind, entry_id, spawn_id),
+  FOREIGN KEY (kind, entry_id, cluster_id)
+    REFERENCES entity_clusters(kind, entry_id, cluster_id)
 );
 CREATE TABLE item_sources (
   item_id INTEGER NOT NULL,
@@ -165,6 +181,9 @@ CREATE INDEX idx_quests_eligibility ON quests(min_level, race_mask, class_mask);
 CREATE INDEX idx_area_candidates_area ON quest_area_candidates(area_id, quest_id);
 CREATE INDEX idx_area_candidates_quest ON quest_area_candidates(quest_id, area_id);
 CREATE INDEX idx_clusters_complete ON entity_clusters(kind, entry_id, cluster_id);
+CREATE INDEX idx_spawns_entity_map ON entity_spawn_points(kind, entry_id, map_id, cluster_id);
+CREATE INDEX idx_spawns_entity_area ON entity_spawn_points(kind, entry_id, area_id);
+CREATE INDEX idx_spawns_entity_mapped_area ON entity_spawn_points(kind, entry_id, mapped_area_id);
 CREATE INDEX idx_service_markers_area ON service_markers(area_id, category, faction);
 CREATE INDEX idx_service_markers_entity ON service_markers(source_kind, source_id, cluster_id);
 """

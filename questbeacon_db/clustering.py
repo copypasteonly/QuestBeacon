@@ -21,6 +21,7 @@ class Cluster:
     point_count: int
     radius: float
     is_noise: bool
+    points: tuple[SpawnPoint, ...]
 
 
 def dbscan(points: list[SpawnPoint], epsilon: float = 75.0, min_points: int = 2) -> list[Cluster]:
@@ -75,5 +76,5 @@ def _summarize(points: list[SpawnPoint], is_noise: bool) -> Cluster:
     radius = max(hypot(point.world_x - world_x, point.world_y - world_y) for point in points)
     return Cluster(
         round(world_x, 6), round(world_y, 6), round(map_x, 6), round(map_y, 6),
-        count, round(radius, 6), is_noise,
+        count, round(radius, 6), is_noise, tuple(sorted(points)),
     )

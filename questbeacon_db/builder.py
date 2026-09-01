@@ -73,8 +73,9 @@ def _authored_coordinate_count(entity: Any) -> int:
 def _coordinate_rows(
     snapshot: PfQuestSnapshot,
     converter: CoordinateConverter,
-) -> tuple[list[tuple[Any, ...]], Counter[str]]:
-    rows: list[tuple[Any, ...]] = []
+) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]], Counter[str]]:
+    cluster_rows: list[tuple[Any, ...]] = []
+    spawn_rows: list[tuple[Any, ...]] = []
     stats: Counter[str] = Counter()
     zone_transforms = snapshot.data["zones"].get("data", {})
     for kind, family in ((1, "units"), (2, "objects")):
@@ -82,7 +83,7 @@ def _coordinate_rows(
             if not isinstance(entity, dict):
                 continue
             converted_groups: dict[tuple[int, int, int, str], list[SpawnPoint]] = defaultdict(list)
-            failed: set[tuple[int, float, float, CoordinateResult]] = set()
+            failed: Counter[tuple[int, float, float, CoordinateResult]] = Counter()
             for coordinate in _values(entity.get("coords", {})):
                 if not isinstance(coordinate, dict) or not all(key in coordinate for key in (1, 2, 3)):
                     continue
@@ -90,26 +91,42 @@ def _coordinate_rows(
                 result = converter.convert(area_id, map_x, map_y, zone_transforms)
                 stats[result.status] += 1
                 if result.world_x is None or result.world_y is None or result.map_id is None:
-                    failed.add((area_id, map_x, map_y, result))
+                    failed[(area_id, map_x, map_y, result)] += 1
                 else:
                     key = (area_id, int(result.mapped_area_id or area_id), result.map_id, result.status)
                     converted_groups[key].append(SpawnPoint(result.world_x, result.world_y, map_x, map_y))
-            summaries: list[tuple[int, int | None, int | None, Cluster | None, float, float, str]] = []
+            summaries: list[tuple[int, int | None, int | None, Cluster | None, float, float, str, Counter[SpawnPoint], int]] = []
             for (area_id, mapped_area_id, map_id, status), points in sorted(converted_groups.items()):
+                point_counts = Counter(points)
                 for cluster in dbscan(points):
-                    summaries.append((area_id, mapped_area_id, map_id, cluster, cluster.map_x, cluster.map_y, status))
-            for area_id, map_x, map_y, result in sorted(failed, key=lambda row: (row[0], row[1], row[2], row[3].status)):
-                summaries.append((area_id, result.mapped_area_id, result.map_id, None, map_x, map_y, result.status))
+                    summaries.append((area_id, mapped_area_id, map_id, cluster, cluster.map_x, cluster.map_y,
+                                      status, point_counts, 0))
+            for (area_id, map_x, map_y, result), authored_count in sorted(
+                failed.items(), key=lambda row: (row[0][0], row[0][1], row[0][2], row[0][3].status)
+            ):
+                summaries.append((area_id, result.mapped_area_id, result.map_id, None, map_x, map_y,
+                                  result.status, Counter(), authored_count))
             summaries.sort(key=lambda row: (row[0], row[2] if row[2] is not None else -1, row[4], row[5], row[6]))
+            spawn_id = 0
             for cluster_id, summary in enumerate(summaries, start=1):
-                area_id, mapped_area_id, map_id, cluster, map_x, map_y, status = summary
-                rows.append((
+                area_id, mapped_area_id, map_id, cluster, map_x, map_y, status, point_counts, failed_count = summary
+                cluster_rows.append((
                     kind, int(entry_id), cluster_id, area_id, mapped_area_id, map_id,
                     cluster.world_x if cluster else None, cluster.world_y if cluster else None,
                     map_x, map_y, cluster.point_count if cluster else 1,
                     cluster.radius if cluster else 0.0, int(cluster.is_noise if cluster else True), status,
                 ))
-    return rows, stats
+                if cluster:
+                    for point in sorted(cluster.points, key=lambda row: (row.map_x, row.map_y, row.world_x, row.world_y)):
+                        spawn_id += 1
+                        spawn_rows.append((kind, int(entry_id), spawn_id, cluster_id, area_id, mapped_area_id,
+                                           map_id, point.world_x, point.world_y, point.map_x, point.map_y,
+                                           point_counts[point], status))
+                else:
+                    spawn_id += 1
+                    spawn_rows.append((kind, int(entry_id), spawn_id, cluster_id, area_id, mapped_area_id,
+                                       map_id, None, None, map_x, map_y, failed_count, status))
+    return cluster_rows, spawn_rows, stats
 
 
 def _relation_rows(quests: dict[Any, Any], role: str) -> list[tuple[int, int, int]]:
@@ -270,7 +287,7 @@ def _write_database(
     data = snapshot.data
     quests = data["quests"].get("data", {})
     quest_locale = data["quests"].get("enUS", {})
-    cluster_rows, conversion_stats = _coordinate_rows(snapshot, converter)
+    cluster_rows, spawn_rows, conversion_stats = _coordinate_rows(snapshot, converter)
     objective_rows = _objective_rows(quests)
     starter_rows = _relation_rows(quests, "start")
     ender_rows = _relation_rows(quests, "end")
@@ -334,6 +351,9 @@ def _write_database(
                         "data_status", "coordinate_count"), sorted(entities))
             _insert_all(connection, "entity_clusters", ("kind", "entry_id", "cluster_id", "area_id", "mapped_area_id", "map_id",
                         "world_x", "world_y", "map_x", "map_y", "point_count", "radius", "is_noise", "conversion_status"), cluster_rows)
+            _insert_all(connection, "entity_spawn_points", ("kind", "entry_id", "spawn_id", "cluster_id", "area_id",
+                        "mapped_area_id", "map_id", "world_x", "world_y", "map_x", "map_y", "authored_count",
+                        "conversion_status"), spawn_rows)
 
             item_rows = []
             for item_id, item in _items(data["items"].get("data", {})):
@@ -383,7 +403,8 @@ def _write_database(
         connection.close()
     return {
         "database": str(path), "schema_version": SCHEMA_VERSION,
-        "counts": {"quests": len(quests), "clusters": len(cluster_rows), "objectives": len(objective_rows),
+        "counts": {"quests": len(quests), "clusters": len(cluster_rows), "spawn_points": len(spawn_rows),
+                   "objectives": len(objective_rows),
                    "starters": len(starter_rows), "enders": len(ender_rows), "fallbacks": len(fallback_rows),
                    "prerequisites": len(prerequisite_rows), "service_markers": len(service_marker_rows)},
         "coordinates": dict(sorted(conversion_stats.items())), "source_commits": snapshot.commits,
