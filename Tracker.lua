@@ -304,6 +304,24 @@ function Tracker:ApplyOpacity()
     self.frame:SetBackdropBorderColor(0.38, 0.38, 0.42, opacity)
 end
 
+function Tracker:IsMouseWithinFrame()
+    if not self.frame then return false end
+    if type(MouseIsOver) == "function" then return MouseIsOver(self.frame) and true or false end
+    if type(GetMouseFocus) ~= "function" then return false end
+    local focus = GetMouseFocus()
+    while focus do
+        if focus == self.frame then return true end
+        if type(focus.GetParent) ~= "function" then return false end
+        focus = focus:GetParent()
+    end
+    return false
+end
+
+function Tracker:UpdateResizeGrip()
+    if not self.resizeGrip then return end
+    if self:IsMouseWithinFrame() then self.resizeGrip:Show() else self.resizeGrip:Hide() end
+end
+
 function Tracker:Refresh()
     if not self.frame then return end
     self:ApplyOpacity()
@@ -427,6 +445,7 @@ function Tracker:Initialize()
     self.resizeGrip.text = self.resizeGrip:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     self.resizeGrip.text:SetAllPoints(self.resizeGrip) self.resizeGrip.text:SetText("/")
     self.resizeGrip.text:SetTextColor(0.55, 0.55, 0.6, 1)
+    self.resizeGrip:Hide()
     self.resizeGrip:SetScript("OnMouseDown", function()
         if not QuestBeacon.Config:Get("trackerLocked") then this:GetParent():StartSizing("BOTTOMRIGHT") end
     end)
@@ -442,7 +461,10 @@ function Tracker:Initialize()
         this:StopMovingOrSizing()
         if this.dragging then this.dragging = nil Tracker:SavePosition() end
     end)
-    frame:SetScript("OnUpdate", function() QuestBeacon.WatchService:HideNativeTracker() end)
+    frame:SetScript("OnUpdate", function()
+        QuestBeacon.WatchService:HideNativeTracker()
+        Tracker:UpdateResizeGrip()
+    end)
     frame:SetScript("OnSizeChanged", function() Tracker:UpdateContentWidth() end)
     self:ApplyPosition()
     self:ApplySize()
