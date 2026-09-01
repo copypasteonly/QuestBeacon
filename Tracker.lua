@@ -297,9 +297,16 @@ function Tracker:SetDifficultyColor(font, quest)
     font:SetTextColor(1, 0.82, 0, 1)
 end
 
+function Tracker:ApplyOpacity()
+    if not self.frame then return end
+    local opacity = QuestBeacon.Config:Get("trackerOpacity") / 100
+    self.frame:SetBackdropColor(0, 0, 0, opacity)
+    self.frame:SetBackdropBorderColor(0.38, 0.38, 0.42, opacity)
+end
+
 function Tracker:Refresh()
     if not self.frame then return end
-    self.frame:SetBackdropColor(0, 0, 0, QuestBeacon.Config:Get("trackerOpacity") / 100)
+    self:ApplyOpacity()
     local rows = self:GetSortedQuests()
     local size = QuestBeacon.Config:Get("trackerFontSize")
     local contentWidth = math.max(220, self.frame:GetWidth() - 20)
