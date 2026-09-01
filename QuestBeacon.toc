@@ -22,4 +22,5 @@ PinService.lua
 ServiceMarkerService.lua
 WorldMapPins.lua
 MinimapPins.lua
+QuestMobs.lua
 Events.lua

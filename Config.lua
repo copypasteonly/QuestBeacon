@@ -22,6 +22,7 @@ Config.defaults = {
     minimapServices = { auctioneer=false, banker=false, battlemaster=false, flight=false,
         innkeeper=false, mailbox=false, meetingstone=false, repair=false, spirithealer=false,
         stablemaster=false, vendor=false },
+    questMobs = { target=true, tooltip=true, nameplates=true },
     availability = { lowLevel=false, highLevel=false, event=false },
 }
 
