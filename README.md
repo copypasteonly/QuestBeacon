@@ -1,6 +1,6 @@
 # QuestBeacon
 
-QuestBeacon is a lightweight quest navigation addon for [OctoWoW](https://octowow.st/) and World of Warcraft 1.12.1 (`Interface: 11200`). It brings together the most useful questing features found in pfQuest and Questie-Octo, then adds a focused tracker and navigation experience of its own. QuestBeacon keeps its large quest database in SQLite instead of loading it into Lua, then uses authored quest coordinates to guide you through the world.
+QuestBeacon is a lightweight quest navigation addon for [OctoWoW](https://octowow.st/) and World of Warcraft 1.12.1. It brings together the most useful questing features found in pfQuest and Questie-Octo, then adds a focused tracker and navigation experience of its own. QuestBeacon keeps its large quest database in SQLite instead of loading it into Lua, then uses authored quest coordinates to guide you through the world.
 
 > [!WARNING]
 > QuestBeacon is in a very early stage of development. Expect bugs, incomplete behavior, and major changes without notice.
@@ -12,6 +12,7 @@ QuestBeacon is a lightweight quest navigation addon for [OctoWoW](https://octowo
 - Zoomable and pannable world map with pins for objectives, colored spawn points, item sources, turn-ins, and available quests
 - Minimap pins for nearby quest objectives and locations
 - Quest mob indicators on the target frame, mouseover tooltips, and nameplates
+- A corpse arrow and tombstone map marker after death
 - Optional world-map and minimap markers for banks, vendors, repairs, travel, and other services
 - Deterministic spawn clustering and item-source resolution
 - Quest completion history and configurable availability filters
@@ -84,7 +85,7 @@ QuestBeacon stands on work from several Vanilla WoW addon projects:
 - A special thank-you to [The Kludge Bureau](https://github.com/The-Kludge-Bureau) for creating [HearthDB](https://github.com/The-Kludge-Bureau/HearthDB), the SQLite bridge that makes QuestBeacon's database architecture possible. QuestBeacon uses the [copypasteonly HearthDB fork](https://github.com/copypasteonly/HearthDB) at runtime.
 - The Kludge Bureau's [Questbound](https://github.com/The-Kludge-Bureau/Questbound), by txtsd, was a major architectural and interface reference. Its SQLite access patterns, query caching, tracker and pin organization, routing, and settings helped shape QuestBeacon. QuestBeacon copies no Questbound implementation.
 - The Kludge Bureau also deserves thanks for maintaining its [pfQuest](https://github.com/The-Kludge-Bureau/pfQuest) and [pfQuest-turtle](https://github.com/The-Kludge-Bureau/pfQuest-turtle) work, which contributed to the database lineage used by pfQuest-octo, and for [Reliquary](https://github.com/The-Kludge-Bureau/Reliquary), which QuestBeacon's offline tooling used to verify DBC schemas. Original pfQuest authorship remains credited to Shagu above.
-- [Questie-Octo](https://github.com/SandreaSub/Questie-Octo) provided valuable ideas for frame-budgeted scheduling, map-update caching, availability publishing, quest-log handling, and minimap work. QuestBeacon's implementation remains independent.
+- [Questie-Octo](https://github.com/SandreaSub/Questie-Octo) provided valuable ideas for frame-budgeted scheduling, map-update caching, availability publishing, quest-log handling, and minimap work.
 - [ClassicAPI](https://github.com/brues-code/ClassicAPI) and [HearthDB](https://github.com/copypasteonly/HearthDB) provide the external runtime capabilities that make the addon possible.
 
 Thank you to these authors and contributors for sharing their work and ideas with the Vanilla WoW community.

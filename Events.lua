@@ -26,6 +26,29 @@ function Coordinator:MarkQuestDirty(logChanged)
     end
 end
 
+function Coordinator:IsPlayerDeadOrGhost()
+    if type(UnitIsDeadOrGhost) == "function" then
+        return UnitIsDeadOrGhost("player") and true or false
+    end
+    local dead = type(UnitIsDead) == "function" and UnitIsDead("player")
+    local ghost = type(UnitIsGhost) == "function" and UnitIsGhost("player")
+    return dead and true or ghost and true or false
+end
+
+function Coordinator:StartCorpseNavigation()
+    if not QuestBeacon.Navigation or not QuestBeacon.PositionService then return end
+    local position = QuestBeacon.PositionService:FillPlayerMotion({}, false)
+    if position.available and type(C_Map) == "table" and type(C_Map.GetBestMapForUnit) == "function" then
+        local areaID = C_Map.GetBestMapForUnit("player")
+        position.areaID = tonumber(areaID)
+    end
+    if not position.available then
+        local state = QuestBeacon.Navigation:GetState()
+        if state and state.player and state.player.available then position = state.player end
+    end
+    QuestBeacon.Navigation:StartCorpseNavigation(position)
+end
+
 function Coordinator:ProcessFrame()
     if not QuestBeacon.enabled then
         return
@@ -134,6 +157,11 @@ function Coordinator:OnEvent(eventName, first, second)
             QuestBeacon.QuestService:OnQuestDataLoaded(tonumber(first), tonumber(second) == 1)
             self.questDirty = true
         end
+    elseif eventName == "PLAYER_DEAD" then
+        self:StartCorpseNavigation()
+    elseif eventName == "PLAYER_UNGHOST" or
+        (eventName == "PLAYER_ALIVE" and not self:IsPlayerDeadOrGhost()) then
+        if QuestBeacon.Navigation then QuestBeacon.Navigation:StopCorpseNavigation() end
     end
 end
 
@@ -150,6 +178,9 @@ frame:RegisterEvent("BAG_UPDATE")
 frame:RegisterEvent("QUEST_TURNED_IN")
 frame:RegisterEvent("PLAYER_LEVEL_UP")
 frame:RegisterEvent("SKILL_LINES_CHANGED")
+frame:RegisterEvent("PLAYER_DEAD")
+frame:RegisterEvent("PLAYER_ALIVE")
+frame:RegisterEvent("PLAYER_UNGHOST")
 frame:RegisterEvent("PLAYER_LOGOUT")
 frame:SetScript("OnEvent", function()
     Coordinator:OnEvent(event, arg1, arg2)

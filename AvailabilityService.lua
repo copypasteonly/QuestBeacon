@@ -128,7 +128,8 @@ function Availability:GetSkillRank(context, skillID)
     if context.skillRanks[skillID] ~= nil then return context.skillRanks[skillID] or nil end
     local rank = nil
     if C_SpellBook and type(C_SpellBook.GetSkillLineRank) == "function" then
-        rank = tonumber(C_SpellBook.GetSkillLineRank(skillID))
+        local rawRank = C_SpellBook.GetSkillLineRank(skillID)
+        rank = tonumber(rawRank)
     end
     context.skillRanks[skillID] = rank or false
     return rank

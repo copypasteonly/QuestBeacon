@@ -256,7 +256,7 @@ end
 
 function Arrow:Refresh(state)
     local settings = self:EnsureSettings()
-    local navigationState = state or QuestBeacon.Navigation:GetState()
+    local navigationState = QuestBeacon.Navigation:GetArrowState(state)
     if settings.shown and navigationState and navigationState.available and navigationState.target then
         self:UpdateTargetText(navigationState.target)
         self.frame:Show()
@@ -266,7 +266,7 @@ function Arrow:Refresh(state)
 end
 
 function Arrow:Update()
-    local state = QuestBeacon.Navigation:GetState()
+    local state = QuestBeacon.Navigation:GetArrowState()
     local settings = self:EnsureSettings()
     if not settings.shown or not state or not state.target then
         self.frame:Hide()

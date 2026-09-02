@@ -81,7 +81,9 @@ function Renderer:GetPin(index)
     frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
     frame:SetScript("OnClick", function()
-        if this.pin and this.pin.role ~= "service" then QuestBeacon.PinService:SelectPin(this.pin) end
+        if this.pin and this.pin.role ~= "service" and this.pin.role ~= "corpse" then
+            QuestBeacon.PinService:SelectPin(this.pin)
+        end
     end)
     frame:SetScript("OnEnter", function() Renderer:ShowTooltip(this) end)
     frame:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
@@ -99,7 +101,15 @@ function Renderer:ShowTooltip(frame)
     GameTooltip:SetOwner(frame, "ANCHOR_LEFT")
     local associations = frame.pin.associations or {}
     local index
-    if frame.pin.role == "service" then
+    if frame.pin.role == "corpse" then
+        GameTooltip:SetText("Your corpse")
+        GameTooltip:AddLine("Return to your body", 0.85, 0.85, 0.85)
+        local player = QuestBeacon.PositionService:GetPlayerPosition()
+        local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
+        if distance then GameTooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end
+        GameTooltip:Show()
+        return
+    elseif frame.pin.role == "service" then
         GameTooltip:SetText(tostring(frame.pin.name or "Service location"))
         for index = 1, table.getn(associations) do
             GameTooltip:AddLine(tostring(associations[index].text or "Service"), 0.85, 0.85, 0.85)
@@ -126,7 +136,7 @@ function Renderer:ShowTooltip(frame)
 end
 
 local function pinEnabled(pin, settings)
-    if pin.role == "service" then return true end
+    if pin.role == "service" or pin.role == "corpse" then return true end
     if type(settings) ~= "table" then
         settings = {objectives=true,itemSources=true,turnIns=true,available=true,
             spawnPoints=true,objectiveClusters=false}
@@ -200,6 +210,9 @@ function Renderer:RefreshPlan()
     end
     if QuestBeacon.ServiceMarkerService then
         plan = QuestBeacon.ServiceMarkerService:GetCombinedPlan(self.areaID, "minimap", plan)
+    end
+    if QuestBeacon.Navigation and QuestBeacon.Navigation.GetPlanWithCorpse then
+        plan = QuestBeacon.Navigation:GetPlanWithCorpse(plan, "minimap")
     end
     self.planAreaID = self.areaID
     if self.planIdentity ~= plan.identity then self:BuildSpatialIndex(plan) end
