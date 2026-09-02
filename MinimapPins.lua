@@ -56,11 +56,12 @@ function Renderer:ObserveZoom()
 end
 
 function Renderer:GetPinSize(pin, zoomYards)
+    local corpse = pin and pin.role == "corpse"
     local cluster = pin and string.find(pin.texture or "", "^cluster_") ~= nil
     local spawn = pin and pin.pinType == "spawn"
-    local referenceSize = spawn and 14 or (cluster and 20 or 16)
-    local minimum = spawn and 10 or (cluster and 14 or 12)
-    local maximum = spawn and 18 or (cluster and 28 or 24)
+    local referenceSize = corpse and 24 or (spawn and 14 or (cluster and 20 or 16))
+    local minimum = corpse and 18 or (spawn and 10 or (cluster and 14 or 12))
+    local maximum = corpse and 32 or (spawn and 18 or (cluster and 28 or 24))
     local size = referenceSize * REFERENCE_ZOOM_YARDS / (tonumber(zoomYards) or REFERENCE_ZOOM_YARDS)
     return math.floor(math.max(minimum, math.min(maximum, size)) + 0.5)
 end

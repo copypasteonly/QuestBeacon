@@ -91,10 +91,11 @@ function Renderer:GetPin(index, pool)
 end
 
 function Renderer:GetPinDisplaySize(pin, zoom)
+    local corpse = pin and pin.role == "corpse"
     local cluster = pin and string.find(pin.texture or "", "^cluster_") ~= nil
     local spawn = pin and pin.pinType == "spawn"
-    local minimum = spawn and 14 or 18
-    local maximum = spawn and 18 or (cluster and 28 or 24)
+    local minimum = corpse and 28 or (spawn and 14 or 18)
+    local maximum = corpse and 36 or (spawn and 18 or (cluster and 28 or 24))
     local size = minimum + (maximum - minimum) * ((tonumber(zoom) or MIN_ZOOM) - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)
     return math.floor(clamp(size, minimum, maximum) + 0.5)
 end
