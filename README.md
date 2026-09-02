@@ -1,6 +1,6 @@
 # QuestBeacon
 
-QuestBeacon is a lightweight quest navigation addon for [OctoWoW](https://octowow.st/) and World of Warcraft 1.12.1 (`Interface: 11200`). It keeps the large quest database in SQLite instead of loading it into Lua, then uses authored quest coordinates to provide a tracker, navigation arrow, and map pins.
+QuestBeacon is a lightweight quest navigation addon for [OctoWoW](https://octowow.st/) and World of Warcraft 1.12.1 (`Interface: 11200`). It brings together the most useful questing features found in pfQuest and Questie-Octo, then adds a focused tracker and navigation experience of its own. QuestBeacon keeps its large quest database in SQLite instead of loading it into Lua, then uses authored quest coordinates to guide you through the world.
 
 > [!WARNING]
 > QuestBeacon is in a very early stage of development. Expect bugs, incomplete behavior, and major changes without notice.
@@ -9,7 +9,9 @@ QuestBeacon is a lightweight quest navigation addon for [OctoWoW](https://octowo
 
 - Directional arrow and distance readout aimed at an authored objective spawn point
 - Quest tracker with watch controls, objective folding, zone views, and distance or level sorting
-- World-map and minimap pins for objectives, colored spawn points, item sources, turn-ins, and available quests
+- Zoomable and pannable world map with pins for objectives, colored spawn points, item sources, turn-ins, and available quests
+- Minimap pins for nearby quest objectives and locations
+- Quest mob indicators on the target frame, mouseover tooltips, and nameplates
 - Optional world-map and minimap markers for banks, vendors, repairs, travel, and other services
 - Deterministic spawn clustering and item-source resolution
 - Quest completion history and configurable availability filters
@@ -45,6 +47,7 @@ Available-quest pins are predicted from the local database until you open a ques
 - Right-click a quest title to open it in the quest log.
 - Ctrl-click a quest title to select its target and open the relevant world-map area.
 - Click an objective or a map pin to navigate to it.
+- Scroll over the world map to zoom, then right-drag to pan around while zoomed in.
 - Shift-drag the arrow to move it, Shift-scroll to resize it, or Shift-right-click it to reset it.
 
 Objective spawn circles use a stable color for each mob or object. By default the world map combines
