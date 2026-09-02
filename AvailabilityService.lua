@@ -8,10 +8,11 @@ Availability.revision = 1
 Availability.generation = 0
 Availability.questSignature = nil
 Availability.initialized = false
-Availability.stats = {scanned=0, available=0, publishes=0, lastAreaID=0, lastError=nil}
-
-local RACE_MASKS = {HUMAN=1, ORC=2, DWARF=4, NIGHTELF=8, SCOURGE=16, TAUREN=32, GNOME=64, TROLL=128}
-local CLASS_MASKS = {WARRIOR=1, PALADIN=2, HUNTER=4, ROGUE=8, PRIEST=16, SHAMAN=64, MAGE=128, WARLOCK=256, DRUID=1024}
+Availability.serverCompleted = {}
+Availability.completionQueryIssued = false
+Availability.starterOffers = {}
+Availability.stats = {scanned=0, available=0, publishes=0, lastAreaID=0, lastError=nil,
+    completionQueryStatus="not requested", serverCompleted=0, verifiedNPCs=0}
 
 local function positiveInteger(value)
     local number = tonumber(value)
@@ -20,8 +21,22 @@ local function positiveInteger(value)
 end
 
 local function hasMask(mask, bit)
-    if not mask or mask == 0 or not bit then return true end
+    if not mask or mask == 0 then return true end
+    if not bit then return false end
     return math.mod(math.floor(mask / bit), 2) == 1
+end
+
+local function bitForID(value)
+    local id = positiveInteger(value)
+    if not id then return nil end
+    return 2 ^ (id - 1)
+end
+
+local function equalSets(first, second)
+    local key
+    for key in pairs(first or {}) do if not second or not second[key] then return false end end
+    for key in pairs(second or {}) do if not first or not first[key] then return false end end
+    return true
 end
 
 local function copySet(source)
@@ -58,10 +73,14 @@ end
 function Availability:GetRevision() return self.revision end
 function Availability:GetStats() return self.stats end
 
-function Availability:Invalidate(reason)
+function Availability:Invalidate(reason, preserveStarterOffers)
     self.revision = self.revision + 1
     self.generation = self.generation + 1
     self.running = {}
+    if not preserveStarterOffers then
+        self.starterOffers = {}
+        self.stats.verifiedNPCs = 0
+    end
     self.stats.lastInvalidation = reason or "unknown"
 end
 
@@ -78,8 +97,10 @@ function Availability:ObserveQuestState(activeQuests)
 end
 
 function Availability:CaptureContext(activeQuests)
-    local _, raceToken = UnitRace("player")
-    local _, classToken = UnitClass("player")
+    local raceToken, raceID = UnitRaceBase("player")
+    local classToken, classID = UnitClassBase("player")
+    raceID = tonumber(raceID)
+    classID = tonumber(classID)
     local active = {}
     local activeIDs = {}
     local index
@@ -94,12 +115,12 @@ function Availability:CaptureContext(activeQuests)
         if not progressedPast then progressedPast = {} end
     end
     QuestBeacon.QuestHistory:Initialize()
-    return {level=tonumber(UnitLevel("player")) or 0, raceBit=RACE_MASKS[raceToken],
-        classBit=CLASS_MASKS[classToken], active=active,
+    return {level=tonumber(UnitLevel("player")) or 0, raceBit=bitForID(raceID),
+        classBit=bitForID(classID), active=active,
         completed=copySet(QuestBeaconHistory and QuestBeaconHistory.completed),
+        serverCompleted=self.serverCompleted,
         progressedPast=progressedPast, progressionError=progressionError,
         lowLevel=QuestBeacon.Config:Get("availability.lowLevel") and true or false,
-        highLevel=QuestBeacon.Config:Get("availability.highLevel") and true or false,
         event=QuestBeacon.Config:Get("availability.event") and true or false, skillRanks={}}
 end
 
@@ -115,9 +136,8 @@ end
 
 function Availability:IsCandidateAvailable(candidate, context)
     if context.active[candidate.id] or context.completed[candidate.id] or
-       context.progressedPast[candidate.id] then return false end
-    if candidate.minLevel > context.level and
-       (not context.highLevel or candidate.minLevel > context.level + 3) then return false end
+       context.serverCompleted[candidate.id] or context.progressedPast[candidate.id] then return false end
+    if candidate.minLevel > context.level then return false end
     if candidate.level < context.level - 4 and not context.lowLevel then return false end
     if candidate.eventID and not context.event then return false end
     if not hasMask(candidate.raceMask, context.raceBit) or not hasMask(candidate.classMask, context.classBit) then return false end
@@ -129,11 +149,91 @@ function Availability:IsCandidateAvailable(candidate, context)
         local satisfied = false
         local index
         for index = 1, table.getn(candidate.prerequisites) do
-            if context.completed[candidate.prerequisites[index]] then satisfied = true end
+            local prerequisiteID = candidate.prerequisites[index]
+            if context.completed[prerequisiteID] or context.serverCompleted[prerequisiteID] then satisfied = true end
         end
         if not satisfied then return false end
     end
     return true
+end
+
+function Availability:RequestCompletedQuestSync()
+    if self.completionQueryIssued then return false end
+    if type(QueryQuestsCompleted) ~= "function" or type(GetQuestsCompleted) ~= "function" then
+        self.stats.completionQueryStatus = "unsupported"
+        return false
+    end
+    -- Record first because compatible servers may dispatch the result synchronously.
+    self.completionQueryIssued = true
+    self.stats.completionQueryStatus = "pending"
+    local ok, queryError = pcall(QueryQuestsCompleted)
+    if not ok then
+        self.stats.completionQueryStatus = "failed: " .. tostring(queryError)
+        return false
+    end
+    return true
+end
+
+function Availability:OnCompletedQuestQuery()
+    if not self.completionQueryIssued or type(GetQuestsCompleted) ~= "function" then return false end
+    local ok, completed = pcall(GetQuestsCompleted)
+    if not ok or type(completed) ~= "table" then
+        self.stats.completionQueryStatus = "invalid result"
+        return false
+    end
+    local nextCompleted = {}
+    local questID
+    for questID in pairs(completed) do
+        local id = positiveInteger(questID)
+        if id then nextCompleted[id] = true end
+    end
+    local changed = not equalSets(self.serverCompleted, nextCompleted)
+    self.serverCompleted = nextCompleted
+    local count = 0
+    for questID in pairs(nextCompleted) do count = count + 1 end
+    self.stats.serverCompleted = count
+    self.stats.completionQueryStatus = "complete"
+    if changed then self:Invalidate("server completion") end
+    return changed
+end
+
+function Availability:ObserveQuestgiver()
+    if type(UnitCreatureID) ~= "function" or type(C_GossipInfo) ~= "table" or
+       type(C_GossipInfo.GetAvailableQuests) ~= "function" then return false end
+    local creatureValue = UnitCreatureID("target")
+    local creatureID = positiveInteger(creatureValue)
+    if not creatureID then return false end
+    local ok, offers = pcall(C_GossipInfo.GetAvailableQuests)
+    if not ok or type(offers) ~= "table" then return false end
+    local offered = {}
+    local index
+    for index = 1, table.getn(offers) do
+        local row = offers[index]
+        local id = type(row) == "table" and positiveInteger(row.questID) or nil
+        if id then offered[id] = true end
+    end
+    local previous = self.starterOffers[creatureID]
+    if previous and equalSets(previous, offered) then return false end
+    self.starterOffers[creatureID] = offered
+    local count = 0
+    local entryID
+    for entryID in pairs(self.starterOffers) do count = count + 1 end
+    self.stats.verifiedNPCs = count
+    self:Invalidate("server questgiver", true)
+    return true
+end
+
+function Availability:IsStarterAvailable(snapshot, questID, sourceKind, sourceID)
+    local id = positiveInteger(questID)
+    if not id then return false, "invalid" end
+    if tonumber(sourceKind) == 1 then
+        local offers = self.starterOffers[positiveInteger(sourceID)]
+        if offers then
+            if offers[id] then return true, "server offered" end
+            return false, "server suppressed"
+        end
+    end
+    return snapshot and snapshot.available[id] and true or false, "predicted"
 end
 
 function Availability:Publish(areaID, generation, available, scanned)

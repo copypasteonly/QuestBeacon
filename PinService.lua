@@ -33,7 +33,7 @@ Pins.nextIdentity = 0
 Pins.worldAreaID = nil
 Pins.minimapAreaID = nil
 Pins.stats = {requests=0, publishes=0, cancelled=0, lastAreaID=0, lastPinCount=0,
-    maxSpawnRowsPerSlice=0}
+    maxSpawnRowsPerSlice=0, lastServerSuppressed=0}
 
 local function positiveInteger(value)
     local number = tonumber(value)
@@ -232,6 +232,7 @@ function Pins:Publish(state)
     self.stats.publishes = self.stats.publishes + 1
     self.stats.lastAreaID = state.areaID
     self.stats.lastPinCount = table.getn(plan.pins)
+    self.stats.lastServerSuppressed = state.serverSuppressed or 0
     self:Notify(state.areaID, plan)
 end
 
@@ -259,16 +260,22 @@ function Pins:RequestPlan(areaID)
         end
         table.insert(tasks, {kind="ender", quest=quest})
     end
+    local serverSuppressed = 0
     if availability then
         local rows = QuestBeacon.DB:GetQuestStarterClustersForArea(id)
         local rowIndex
         for rowIndex = 1, table.getn(rows or {}) do
-            if availability.available[rows[rowIndex].questID] and not activeQuestIDs[rows[rowIndex].questID] then
+            local starterAvailable, source = QuestBeacon.AvailabilityService:IsStarterAvailable(
+                availability, rows[rowIndex].questID, rows[rowIndex].kind, rows[rowIndex].entryID)
+            if not starterAvailable and source == "server suppressed" then
+                serverSuppressed = serverSuppressed + 1
+            elseif starterAvailable and not activeQuestIDs[rows[rowIndex].questID] then
                 table.insert(tasks, {kind="available", row=rows[rowIndex]})
             end
         end
     end
-    local state = {areaID=id, key=key, tasks=tasks, position=1, pins={}, seen={}, cancelled=false}
+    local state = {areaID=id, key=key, tasks=tasks, position=1, pins={}, seen={}, cancelled=false,
+        serverSuppressed=serverSuppressed}
     self.running[id] = state
     self.stats.requests = self.stats.requests + 1
     local function step()

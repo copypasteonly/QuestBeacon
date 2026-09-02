@@ -179,6 +179,7 @@ def _prerequisite_rows(quests: dict[Any, Any]) -> list[tuple[int, int, int]]:
 def _area_candidate_rows(
     starters: list[tuple[int, int, int]],
     clusters: list[tuple[Any, ...]],
+    excluded_quest_ids: set[int] | frozenset[int] = frozenset(),
 ) -> list[tuple[int, int, int, int, int]]:
     clusters_by_entity: dict[tuple[int, int], list[tuple[int, int]]] = defaultdict(list)
     for row in clusters:
@@ -190,9 +191,21 @@ def _area_candidate_rows(
     rows = {
         (area_id, quest_id, source_kind, source_id, cluster_id)
         for quest_id, source_kind, source_id in starters
+        if quest_id not in excluded_quest_ids
         for area_id, cluster_id in clusters_by_entity.get((source_kind, source_id), [])
     }
     return sorted(rows)
+
+
+def _availability_exclusions(quests: dict[Any, Any], quest_locale: dict[Any, Any]) -> dict[int, str]:
+    quest_ids = {int(quest_id) for quest_id, quest in _items(quests) if isinstance(quest, dict)}
+    excluded: dict[int, str] = {}
+    for quest_id, localized in _items(quest_locale):
+        title = localized.get("T") if isinstance(localized, dict) else localized
+        numeric_id = int(quest_id)
+        if numeric_id in quest_ids and isinstance(title, str) and title.strip().upper().startswith("[DEPRECATED]"):
+            excluded[numeric_id] = "deprecated_title"
+    return excluded
 
 
 def _service_marker_rows(
@@ -293,7 +306,8 @@ def _write_database(
     ender_rows = _relation_rows(quests, "end")
     fallback_rows = _fallback_rows(objective_rows, snapshot, converter)
     prerequisite_rows = _prerequisite_rows(quests)
-    area_candidate_rows = _area_candidate_rows(starter_rows, cluster_rows)
+    availability_exclusions = _availability_exclusions(quests, quest_locale)
+    area_candidate_rows = _area_candidate_rows(starter_rows, cluster_rows, set(availability_exclusions))
     service_marker_rows = _service_marker_rows(snapshot, cluster_rows)
 
     connection = sqlite3.connect(path)
@@ -325,6 +339,8 @@ def _write_database(
                           _title(quest_locale, int(qid)))
                          for qid, q in _items(quests) if isinstance(q, dict)))
             _insert_all(connection, "quest_prerequisites", ("quest_id", "prerequisite_quest_id", "ordinal"), prerequisite_rows)
+            _insert_all(connection, "quest_availability_exclusions", ("quest_id", "reason"),
+                        sorted(availability_exclusions.items()))
             entities = []
             referenced_entities = {
                 (kind, source_id)
@@ -406,6 +422,7 @@ def _write_database(
         "counts": {"quests": len(quests), "clusters": len(cluster_rows), "spawn_points": len(spawn_rows),
                    "objectives": len(objective_rows),
                    "starters": len(starter_rows), "enders": len(ender_rows), "fallbacks": len(fallback_rows),
-                   "prerequisites": len(prerequisite_rows), "service_markers": len(service_marker_rows)},
+                   "prerequisites": len(prerequisite_rows), "service_markers": len(service_marker_rows),
+                   "availability_exclusions": len(availability_exclusions)},
         "coordinates": dict(sorted(conversion_stats.items())), "source_commits": snapshot.commits,
     }

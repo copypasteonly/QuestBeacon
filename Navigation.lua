@@ -784,13 +784,17 @@ function Navigation:PrintStatus()
         local availability = QuestBeacon.AvailabilityService:GetStats()
         QuestBeacon:Print("availability area=" .. tostring(availability.lastAreaID or 0) ..
             " scanned=" .. tostring(availability.scanned or 0) .. " available=" ..
-            tostring(availability.available or 0) .. " publishes=" .. tostring(availability.publishes or 0))
+            tostring(availability.available or 0) .. " publishes=" .. tostring(availability.publishes or 0) ..
+            " serverQuery=" .. tostring(availability.completionQueryStatus or "unknown") ..
+            " serverCompleted=" .. tostring(availability.serverCompleted or 0) ..
+            " verifiedNPCs=" .. tostring(availability.verifiedNPCs or 0))
     end
     if QuestBeacon.PinService and QuestBeacon.PinService.GetStats then
         local pins = QuestBeacon.PinService:GetStats()
         QuestBeacon:Print("pin plans requested=" .. tostring(pins.requests or 0) .. " published=" ..
             tostring(pins.publishes or 0) .. " cancelled=" .. tostring(pins.cancelled or 0) ..
-            " lastPins=" .. tostring(pins.lastPinCount or 0))
+            " lastPins=" .. tostring(pins.lastPinCount or 0) ..
+            " serverSuppressed=" .. tostring(pins.lastServerSuppressed or 0))
     end
     if QuestBeacon.WorldMapPins and QuestBeacon.WorldMapPins.GetStats then
         local world = QuestBeacon.WorldMapPins:GetStats()

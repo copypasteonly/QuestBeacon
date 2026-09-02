@@ -100,8 +100,22 @@ function Coordinator:OnEvent(eventName, first, second)
         if QuestBeacon.DB and not QuestBeacon.DB:Open() then
             return
         end
+        if QuestBeacon.AvailabilityService then
+            if type(QueryQuestsCompleted) == "function" and type(GetQuestsCompleted) == "function" then
+                self.frame:RegisterEvent("QUEST_QUERY_COMPLETE")
+            end
+            QuestBeacon.AvailabilityService:RequestCompletedQuestSync()
+        end
         self:StartQuestSettlement()
         self:MarkQuestDirty(true)
+    elseif eventName == "GOSSIP_SHOW" or eventName == "QUEST_GREETING" then
+        if QuestBeacon.AvailabilityService and QuestBeacon.AvailabilityService:ObserveQuestgiver() then
+            self:MarkQuestDirty(false)
+        end
+    elseif eventName == "QUEST_QUERY_COMPLETE" then
+        if QuestBeacon.AvailabilityService and QuestBeacon.AvailabilityService:OnCompletedQuestQuery() then
+            self:MarkQuestDirty(false)
+        end
     elseif eventName == "QUEST_LOG_UPDATE" or eventName == "UNIT_QUEST_LOG_CHANGED" then
         self:MarkQuestDirty(true)
     elseif eventName == "BAG_UPDATE" then
@@ -127,6 +141,8 @@ local frame = CreateFrame("Frame", "QuestBeaconEventFrame")
 Coordinator.frame = frame
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("GOSSIP_SHOW")
+frame:RegisterEvent("QUEST_GREETING")
 frame:RegisterEvent("QUEST_LOG_UPDATE")
 frame:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
 frame:RegisterEvent("QUEST_DATA_LOAD_RESULT")

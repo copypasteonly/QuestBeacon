@@ -1,9 +1,9 @@
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys=ON;
 PRAGMA application_id=1363298644;
-PRAGMA user_version=6;
+PRAGMA user_version=7;
 
 CREATE TABLE maps (
   id INTEGER PRIMARY KEY,
@@ -37,6 +37,11 @@ CREATE TABLE quest_prerequisites (
   prerequisite_quest_id INTEGER NOT NULL,
   ordinal INTEGER NOT NULL,
   PRIMARY KEY (quest_id, prerequisite_quest_id),
+  FOREIGN KEY (quest_id) REFERENCES quests(id)
+);
+CREATE TABLE quest_availability_exclusions (
+  quest_id INTEGER PRIMARY KEY,
+  reason TEXT NOT NULL CHECK (reason = 'deprecated_title'),
   FOREIGN KEY (quest_id) REFERENCES quests(id)
 );
 CREATE TABLE entities (

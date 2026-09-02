@@ -3,7 +3,7 @@ local Config = QuestBeacon.Config
 
 Config.listeners = {}
 Config.defaults = {
-    configVersion = 3,
+    configVersion = 4,
     point = "CENTER", x = 0, y = -100, scale = 1, shown = true,
     trackingMode = "auto", arrowFontSize = 12,
     trackerShown = true, trackerLocked = false, trackerFontSize = 12,
@@ -25,7 +25,7 @@ Config.defaults = {
         innkeeper=false, mailbox=false, meetingstone=false, repair=false, spirithealer=false,
         stablemaster=false, vendor=false },
     questMobs = { target=true, tooltip=true, nameplates=true },
-    availability = { lowLevel=false, highLevel=false, event=false },
+    availability = { lowLevel=false, event=false },
 }
 
 local function copy(value)
@@ -82,6 +82,11 @@ function Config:Initialize()
         if QuestBeaconSettings.minimap.spawnPoints == nil then QuestBeaconSettings.minimap.spawnPoints = true end
         if QuestBeaconSettings.minimap.objectiveClusters == nil then QuestBeaconSettings.minimap.objectiveClusters = false end
         QuestBeaconSettings.configVersion = 3
+    end
+    if (tonumber(QuestBeaconSettings.configVersion) or 0) < 4 then
+        if type(QuestBeaconSettings.availability) ~= "table" then QuestBeaconSettings.availability = {} end
+        QuestBeaconSettings.availability.highLevel = nil
+        QuestBeaconSettings.configVersion = 4
     end
     fill(QuestBeaconSettings, self.defaults)
     QuestBeaconSettings.arrowFontSize = math.max(8, math.min(24, tonumber(QuestBeaconSettings.arrowFontSize) or 12))

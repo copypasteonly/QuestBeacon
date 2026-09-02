@@ -2,7 +2,7 @@ QuestBeacon = QuestBeacon or {}
 
 QuestBeacon.NAME = "QuestBeacon"
 QuestBeacon.VERSION = "0.5.0"
-QuestBeacon.SCHEMA_VERSION = 6
+QuestBeacon.SCHEMA_VERSION = 7
 QuestBeacon.enabled = false
 QuestBeacon.disabledReason = nil
 QuestBeacon.errorPrinted = false
@@ -44,6 +44,15 @@ function QuestBeacon:CheckClassicAPI()
     requireFunction(GetNumQuestLeaderBoards, "GetNumQuestLeaderBoards")
     requireFunction(GetQuestLogLeaderBoard, "GetQuestLogLeaderBoard")
     requireFunction(GetQuestLogLeaderBoardID, "GetQuestLogLeaderBoardID")
+    requireFunction(UnitRaceBase, "UnitRaceBase")
+    requireFunction(UnitClassBase, "UnitClassBase")
+    requireFunction(UnitCreatureID, "UnitCreatureID")
+
+    if type(C_GossipInfo) ~= "table" then
+        table.insert(missing, "C_GossipInfo")
+    else
+        requireFunction(C_GossipInfo.GetAvailableQuests, "C_GossipInfo.GetAvailableQuests")
+    end
 
     if type(C_PlayerInfo) ~= "table" then
         table.insert(missing, "C_PlayerInfo")

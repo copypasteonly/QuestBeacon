@@ -14,7 +14,7 @@ EXPECTED_TABLES = {
     "maps", "areas", "quests", "entities", "entity_clusters", "entity_spawn_points", "item_sources",
     "reference_loot_sources", "quest_objective_sources", "quest_starters",
     "quest_enders", "item_use_targets", "quest_fallback_targets", "quest_prerequisites",
-    "quest_area_candidates", "service_markers", "build_metadata",
+    "quest_area_candidates", "quest_availability_exclusions", "service_markers", "build_metadata",
 }
 EXPECTED_INDEXES = {
     "idx_clusters_entry", "idx_clusters_area", "idx_item_sources",
@@ -143,7 +143,9 @@ def validate_database(path: Path) -> ValidationResult:
         missing_candidates = connection.execute(
             """SELECT count(*) FROM quest_starters s
                JOIN entity_clusters c ON c.kind=s.source_kind AND c.entry_id=s.source_id
-               WHERE c.world_x IS NOT NULL AND c.world_y IS NOT NULL AND NOT EXISTS (
+               WHERE c.world_x IS NOT NULL AND c.world_y IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM quest_availability_exclusions x WHERE x.quest_id=s.quest_id)
+                 AND NOT EXISTS (
                  SELECT 1 FROM quest_area_candidates a
                  WHERE a.area_id=COALESCE(c.mapped_area_id,c.area_id)
                    AND a.quest_id=s.quest_id AND a.source_kind=s.source_kind

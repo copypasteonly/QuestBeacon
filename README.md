@@ -39,6 +39,8 @@ QuestBeacon disables itself with a chat message if a required API or HearthDB fu
 
 Use `/qbeacon settings` or the cog button on the tracker to configure the arrow, tracker, map pins, minimap pins, service markers, and available-quest filters.
 
+Available-quest pins are predicted from the local database until you open a questgiver. QuestBeacon then uses the server's offered quest list for that NPC and, on compatible servers, imports completed quest IDs once per login into session-only availability state.
+
 - Click a quest title to fold or unfold its objectives.
 - Right-click a quest title to open it in the quest log.
 - Ctrl-click a quest title to select its target and open the relevant world-map area.
