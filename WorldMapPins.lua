@@ -2,6 +2,7 @@ QuestBeacon.WorldMapPins = QuestBeacon.WorldMapPins or {}
 local Renderer = QuestBeacon.WorldMapPins
 
 Renderer.pool = {}
+Renderer.stagingPool = {}
 Renderer.filterRevision = 1
 Renderer.renderGeneration = 0
 Renderer.lastRenderKey = nil
@@ -72,8 +73,9 @@ function Renderer:Project(pin, area)
     return x, y
 end
 
-function Renderer:GetPin(index)
-    if self.pool[index] then return self.pool[index] end
+function Renderer:GetPin(index, pool)
+    local targetPool = pool or self.pool
+    if targetPool[index] then return targetPool[index] end
     local frame = CreateFrame("Button", nil, WorldMapButton)
     frame:SetWidth(18) frame:SetHeight(18) frame:SetFrameLevel(20) frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
@@ -82,7 +84,7 @@ function Renderer:GetPin(index)
     end)
     frame:SetScript("OnEnter", function() Renderer:ShowTooltip(this) end)
     frame:SetScript("OnLeave", function() if WorldMapTooltip then WorldMapTooltip:Hide() elseif GameTooltip then GameTooltip:Hide() end end)
-    self.pool[index] = frame
+    targetPool[index] = frame
     return frame
 end
 
@@ -440,8 +442,11 @@ function Renderer:InstallZoomViewport()
 end
 
 function Renderer:HidePins()
-    local index
-    for index = 1, table.getn(self.pool) do self.pool[index]:Hide() end
+    local pools = {self.pool, self.stagingPool}
+    local poolIndex, index
+    for poolIndex = 1, table.getn(pools) do
+        for index = 1, table.getn(pools[poolIndex]) do pools[poolIndex][index]:Hide() end
+    end
 end
 
 function Renderer:ShowTooltip(frame)
@@ -541,10 +546,9 @@ function Renderer:RenderPlan(area, plan, renderKey)
     local generation = self.renderGeneration
     local state = {position=1, shown=0, pins=plan.pins, area=area, key=renderKey, density={},
         settings=QuestBeacon.Config:Get("worldMap"),
-        width=WorldMapButton:GetWidth(), height=WorldMapButton:GetHeight()}
+        width=WorldMapButton:GetWidth(), height=WorldMapButton:GetHeight(), pool=self.stagingPool}
     self.pendingRenderKey = renderKey
     self.stats.requested = self.stats.requested + 1
-    self:HidePins()
     local function step()
         if generation ~= Renderer.renderGeneration or Renderer.pendingRenderKey ~= renderKey then return end
         local count = 0
@@ -559,7 +563,7 @@ function Renderer:RenderPlan(area, plan, renderKey)
                     if pin.pinType == "spawn" then displayPin = Renderer:MergeSpawnForDisplay(state, pin, x, y) end
                     if displayPin then
                     state.shown = state.shown + 1
-                    local frame = Renderer:GetPin(state.shown)
+                    local frame = Renderer:GetPin(state.shown, state.pool)
                     frame.pin = displayPin
                     frame.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. displayPin.texture)
                     if displayPin.pinType == "spawn" then
@@ -573,7 +577,7 @@ function Renderer:RenderPlan(area, plan, renderKey)
                     Renderer:ApplyPinSize(frame)
                     frame:ClearAllPoints()
                     frame:SetPoint("CENTER", WorldMapButton, "TOPLEFT", x * state.width, -y * state.height)
-                    frame:Show()
+                    frame:Hide()
                     end
                 end
             end
@@ -582,8 +586,15 @@ function Renderer:RenderPlan(area, plan, renderKey)
             QuestBeacon.Scheduler:Enqueue(step, "world map render", "world-map-render")
             return
         end
+        -- Keep the prior generation visible while this one is prepared. Swapping only after the
+        -- latest generation is complete prevents rapid zoom events from exposing an empty or partial map.
+        local oldPool = Renderer.pool
         local index
-        for index = state.shown + 1, table.getn(Renderer.pool) do Renderer.pool[index]:Hide() end
+        for index = 1, table.getn(oldPool) do oldPool[index]:Hide() end
+        for index = 1, state.shown do state.pool[index]:Show() end
+        for index = state.shown + 1, table.getn(state.pool) do state.pool[index]:Hide() end
+        Renderer.pool = state.pool
+        Renderer.stagingPool = oldPool
         Renderer.lastRenderKey = renderKey
         Renderer.pendingRenderKey = nil
         Renderer.stats.completed = Renderer.stats.completed + 1
