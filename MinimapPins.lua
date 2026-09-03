@@ -56,12 +56,11 @@ function Renderer:ObserveZoom()
 end
 
 function Renderer:GetPinSize(pin, zoomYards)
-    local corpse = pin and pin.role == "corpse"
     local cluster = pin and string.find(pin.texture or "", "^cluster_") ~= nil
     local spawn = pin and pin.pinType == "spawn"
-    local referenceSize = corpse and 24 or (spawn and 14 or (cluster and 20 or 16))
-    local minimum = corpse and 18 or (spawn and 10 or (cluster and 14 or 12))
-    local maximum = corpse and 32 or (spawn and 18 or (cluster and 28 or 24))
+    local referenceSize = spawn and 14 or (cluster and 20 or 16)
+    local minimum = spawn and 10 or (cluster and 14 or 12)
+    local maximum = spawn and 18 or (cluster and 28 or 24)
     local size = referenceSize * REFERENCE_ZOOM_YARDS / (tonumber(zoomYards) or REFERENCE_ZOOM_YARDS)
     return math.floor(math.max(minimum, math.min(maximum, size)) + 0.5)
 end
@@ -82,7 +81,7 @@ function Renderer:GetPin(index)
     frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
     frame:SetScript("OnClick", function()
-        if this.pin and this.pin.role ~= "service" and this.pin.role ~= "corpse" then
+        if this.pin and this.pin.role ~= "service" then
             QuestBeacon.PinService:SelectPin(this.pin)
         end
     end)
@@ -102,15 +101,7 @@ function Renderer:ShowTooltip(frame)
     GameTooltip:SetOwner(frame, "ANCHOR_LEFT")
     local associations = frame.pin.associations or {}
     local index
-    if frame.pin.role == "corpse" then
-        GameTooltip:SetText("Your corpse")
-        GameTooltip:AddLine("Return to your body", 0.85, 0.85, 0.85)
-        local player = QuestBeacon.PositionService:GetPlayerPosition()
-        local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
-        if distance then GameTooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end
-        GameTooltip:Show()
-        return
-    elseif frame.pin.role == "service" then
+    if frame.pin.role == "service" then
         GameTooltip:SetText(tostring(frame.pin.name or "Service location"))
         for index = 1, table.getn(associations) do
             GameTooltip:AddLine(tostring(associations[index].text or "Service"), 0.85, 0.85, 0.85)
@@ -137,7 +128,7 @@ function Renderer:ShowTooltip(frame)
 end
 
 local function pinEnabled(pin, settings)
-    if pin.role == "service" or pin.role == "corpse" then return true end
+    if pin.role == "service" then return true end
     if type(settings) ~= "table" then
         settings = {objectives=true,itemSources=true,turnIns=true,available=true,
             spawnPoints=true,objectiveClusters=false}
@@ -211,9 +202,6 @@ function Renderer:RefreshPlan()
     end
     if QuestBeacon.ServiceMarkerService then
         plan = QuestBeacon.ServiceMarkerService:GetCombinedPlan(self.areaID, "minimap", plan)
-    end
-    if QuestBeacon.Navigation and QuestBeacon.Navigation.GetPlanWithCorpse then
-        plan = QuestBeacon.Navigation:GetPlanWithCorpse(plan, "minimap")
     end
     self.planAreaID = self.areaID
     if self.planIdentity ~= plan.identity then self:BuildSpatialIndex(plan) end

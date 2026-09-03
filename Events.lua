@@ -5,6 +5,8 @@ Coordinator.questDirty = false
 Coordinator.initialRefresh = true
 Coordinator.questSettleUntil = 0
 Coordinator.nextQuestSettle = 0
+Coordinator.corpseRefreshUntil = 0
+Coordinator.nextCorpseRefresh = 0
 
 function Coordinator:Now()
     if type(GetTime) == "function" then
@@ -35,18 +37,51 @@ function Coordinator:IsPlayerDeadOrGhost()
     return dead and true or ghost and true or false
 end
 
-function Coordinator:StartCorpseNavigation()
-    if not QuestBeacon.Navigation or not QuestBeacon.PositionService then return end
-    local position = QuestBeacon.PositionService:FillPlayerMotion({}, false)
-    if position.available and type(C_Map) == "table" and type(C_Map.GetBestMapForUnit) == "function" then
-        local areaID = C_Map.GetBestMapForUnit("player")
-        position.areaID = tonumber(areaID)
+function Coordinator:GetNativeCorpsePosition()
+    if type(GetCorpseMapPosition) ~= "function" or not QuestBeacon.DB then return nil end
+    if type(C_Map) ~= "table" or type(C_Map.GetBestMapForUnit) ~= "function" then return nil end
+    if type(SetMapToCurrentZone) == "function" and
+       (not WorldMapFrame or not WorldMapFrame:IsVisible()) then
+        SetMapToCurrentZone()
     end
-    if not position.available then
-        local state = QuestBeacon.Navigation:GetState()
-        if state and state.player and state.player.available then position = state.player end
+    local rawAreaID = C_Map.GetBestMapForUnit("player")
+    local areaID = tonumber(rawAreaID)
+    local area = areaID and QuestBeacon.DB:GetArea(areaID) or nil
+    if not area or area.mappingStatus ~= "mapped" or area.mapID == nil then return nil end
+    if not area.locLeft or not area.locRight or not area.locTop or not area.locBottom then return nil end
+    local rawX, rawY = GetCorpseMapPosition()
+    local normalizedX, normalizedY = tonumber(rawX), tonumber(rawY)
+    if not normalizedX or not normalizedY or normalizedX <= 0 or normalizedX > 1 or
+       normalizedY <= 0 or normalizedY > 1 then return nil end
+    local width = area.locLeft - area.locRight
+    local height = area.locTop - area.locBottom
+    if width == 0 or height == 0 then return nil end
+    return {
+        available=true, areaID=areaID, mapID=area.mapID,
+        x=area.locTop - normalizedY * height,
+        y=area.locLeft - normalizedX * width,
+    }
+end
+
+function Coordinator:RefreshCorpseNavigation(allowPlayerFallback)
+    if not QuestBeacon.Navigation then return false end
+    local position = self:GetNativeCorpsePosition()
+    if not position and allowPlayerFallback and QuestBeacon.PositionService then
+        position = QuestBeacon.PositionService:FillPlayerMotion({}, false)
+        if position.available and type(C_Map) == "table" and type(C_Map.GetBestMapForUnit) == "function" then
+            local rawAreaID = C_Map.GetBestMapForUnit("player")
+            position.areaID = tonumber(rawAreaID)
+        end
     end
-    QuestBeacon.Navigation:StartCorpseNavigation(position)
+    if not position or not position.available then return false end
+    return QuestBeacon.Navigation:StartCorpseNavigation(position)
+end
+
+function Coordinator:StartCorpseRefresh(allowPlayerFallback)
+    local now = self:Now()
+    self.corpseRefreshUntil = now + 10
+    self.nextCorpseRefresh = now
+    self:RefreshCorpseNavigation(allowPlayerFallback)
 end
 
 function Coordinator:ProcessFrame()
@@ -54,6 +89,13 @@ function Coordinator:ProcessFrame()
         return
     end
     local now = self:Now()
+    if self:IsPlayerDeadOrGhost() and self.corpseRefreshUntil > now and self.nextCorpseRefresh <= now then
+        if self:RefreshCorpseNavigation(false) then
+            self.corpseRefreshUntil = 0
+        else
+            self.nextCorpseRefresh = now + 0.25
+        end
+    end
     if not self.questDirty and self.questSettleUntil > now and self.nextQuestSettle <= now then
         self.questDirty = true
         self.nextQuestSettle = now + 0.25
@@ -131,6 +173,7 @@ function Coordinator:OnEvent(eventName, first, second)
         end
         self:StartQuestSettlement()
         self:MarkQuestDirty(true)
+        if self:IsPlayerDeadOrGhost() then self:StartCorpseRefresh(false) end
     elseif eventName == "GOSSIP_SHOW" or eventName == "QUEST_GREETING" then
         if QuestBeacon.AvailabilityService and QuestBeacon.AvailabilityService:ObserveQuestgiver() then
             self:MarkQuestDirty(false)
@@ -158,9 +201,16 @@ function Coordinator:OnEvent(eventName, first, second)
             self.questDirty = true
         end
     elseif eventName == "PLAYER_DEAD" then
-        self:StartCorpseNavigation()
-    elseif eventName == "PLAYER_UNGHOST" or
-        (eventName == "PLAYER_ALIVE" and not self:IsPlayerDeadOrGhost()) then
+        self:StartCorpseRefresh(true)
+    elseif eventName == "PLAYER_ALIVE" then
+        if self:IsPlayerDeadOrGhost() then
+            self:StartCorpseRefresh(false)
+        elseif QuestBeacon.Navigation then
+            self.corpseRefreshUntil = 0
+            QuestBeacon.Navigation:StopCorpseNavigation()
+        end
+    elseif eventName == "PLAYER_UNGHOST" then
+        self.corpseRefreshUntil = 0
         if QuestBeacon.Navigation then QuestBeacon.Navigation:StopCorpseNavigation() end
     end
 end

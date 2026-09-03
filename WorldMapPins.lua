@@ -80,7 +80,7 @@ function Renderer:GetPin(index, pool)
     frame:SetWidth(18) frame:SetHeight(18) frame:SetFrameLevel(20) frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
     frame:SetScript("OnClick", function()
-        if this.pin and this.pin.role ~= "service" and this.pin.role ~= "corpse" then
+        if this.pin and this.pin.role ~= "service" then
             QuestBeacon.PinService:SelectPin(this.pin)
         end
     end)
@@ -91,11 +91,10 @@ function Renderer:GetPin(index, pool)
 end
 
 function Renderer:GetPinDisplaySize(pin, zoom)
-    local corpse = pin and pin.role == "corpse"
     local cluster = pin and string.find(pin.texture or "", "^cluster_") ~= nil
     local spawn = pin and pin.pinType == "spawn"
-    local minimum = corpse and 28 or (spawn and 14 or 18)
-    local maximum = corpse and 36 or (spawn and 18 or (cluster and 28 or 24))
+    local minimum = spawn and 14 or 18
+    local maximum = spawn and 18 or (cluster and 28 or 24)
     local size = minimum + (maximum - minimum) * ((tonumber(zoom) or MIN_ZOOM) - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)
     return math.floor(clamp(size, minimum, maximum) + 0.5)
 end
@@ -266,29 +265,6 @@ function Renderer:RefreshFixedOverlays()
         reveal:ClearAllPoints()
         reveal:SetPoint("TOPLEFT", self.viewport, "TOPLEFT", 1, 19)
     end
-    self:RefreshNativeCorpse()
-end
-
-function Renderer:RefreshNativeCorpse()
-    if not WorldMapCorpse then return end
-    if not self.nativeCorpseHooked then
-        self.nativeCorpseHooked = true
-        local function suppressDuplicate()
-            local corpse = QuestBeacon.Navigation and QuestBeacon.Navigation.corpseState
-            if corpse and corpse.target then WorldMapCorpse:Hide() end
-        end
-        if WorldMapCorpse.HookScript then
-            WorldMapCorpse:HookScript("OnShow", suppressDuplicate)
-        else
-            local previous = WorldMapCorpse:GetScript("OnShow")
-            WorldMapCorpse:SetScript("OnShow", function()
-                if previous then previous() end
-                suppressDuplicate()
-            end)
-        end
-    end
-    local corpse = QuestBeacon.Navigation and QuestBeacon.Navigation.corpseState
-    if corpse and corpse.target then WorldMapCorpse:Hide() end
 end
 
 function Renderer:ApplyPlayerIndicatorSize()
@@ -481,15 +457,7 @@ function Renderer:ShowTooltip(frame)
     tooltip:SetOwner(frame, "ANCHOR_RIGHT")
     local associations = frame.pin.associations or {}
     local index
-    if frame.pin.role == "corpse" then
-        tooltip:SetText("Your corpse")
-        tooltip:AddLine("Return to your body", 0.85, 0.85, 0.85)
-        local player = QuestBeacon.PositionService:GetPlayerPosition()
-        local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
-        if distance then tooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end
-        tooltip:Show()
-        return
-    elseif frame.pin.role == "service" then
+    if frame.pin.role == "service" then
         tooltip:SetText(tostring(frame.pin.name or "Service location"))
         for index = 1, table.getn(associations) do
             tooltip:AddLine(tostring(associations[index].text or "Service"), 0.85, 0.85, 0.85)
@@ -520,7 +488,7 @@ function Renderer:ShowTooltip(frame)
 end
 
 local function pinEnabled(pin, settings)
-    if pin.role == "service" or pin.role == "corpse" then return true end
+    if pin.role == "service" then return true end
     if type(settings) ~= "table" then
         settings = {objectives=true,itemSources=true,turnIns=true,available=true,
             spawnPoints=true,objectiveClusters=true}
@@ -674,9 +642,6 @@ function Renderer:EnsureCurrent()
     self.waitingAreaID = nil
     if QuestBeacon.ServiceMarkerService then
         plan = QuestBeacon.ServiceMarkerService:GetCombinedPlan(areaID, "world", plan)
-    end
-    if QuestBeacon.Navigation and QuestBeacon.Navigation.GetPlanWithCorpse then
-        plan = QuestBeacon.Navigation:GetPlanWithCorpse(plan, "world")
     end
     local width, height = WorldMapButton:GetWidth(), WorldMapButton:GetHeight()
     local renderKey = table.concat({tostring(areaID), tostring(plan.identity), tostring(self.filterRevision),

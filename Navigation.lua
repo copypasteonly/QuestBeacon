@@ -13,8 +13,6 @@ Navigation.lastPlayerX = nil
 Navigation.lastPlayerY = nil
 Navigation.lastResolveTime = 0
 Navigation.corpseState = nil
-Navigation.corpseRevision = 0
-Navigation.corpsePlans = {}
 
 local SOURCE_UNIT = 1
 local SOURCE_OBJECT = 2
@@ -61,11 +59,11 @@ local function candidateBefore(first, second)
     if not second then
         return true
     end
-    -- Watching a quest is an explicit navigation preference. Item-use targets,
-    -- vendors, and non-noise clusters remain correctness gates; drop rate and
-    -- source quality only break ties after nearby authored targets are compared.
+    -- Watching a quest is an explicit navigation preference. Item-use and vendor
+    -- targets are correctness gates, but a singleton cluster must not permanently
+    -- lose to a farther multi-point cluster when both are valid targets.
     local keys = {
-        "watchRank", "areaRank", "useRank", "noiseRank", "vendorRank", "distanceSquared",
+        "watchRank", "areaRank", "useRank", "vendorRank", "distanceSquared", "noiseRank",
         "rateRank", "sourceRank", "questLogIndex", "objectiveIndex",
         "questID", "entryID", "clusterID",
     }
@@ -512,56 +510,26 @@ function Navigation:GetArrowState(state)
     return self.corpseState or state or self.state
 end
 
-function Navigation:GetPlanWithCorpse(plan, destination)
-    if not self.corpseState or not self.corpseState.target then return plan end
-    local baseIdentity = plan and plan.identity or 0
-    local key = tostring(baseIdentity) .. ":corpse:" .. tostring(self.corpseRevision)
-    local cacheKey = tostring(destination or "map")
-    local cached = self.corpsePlans[cacheKey]
-    if cached and cached.key == key then return cached.plan end
-    local pins = {}
-    local sourcePins = plan and plan.pins or {}
-    local index
-    for index = 1, table.getn(sourcePins) do table.insert(pins, sourcePins[index]) end
-    table.insert(pins, self.corpseState.target)
-    local combined = {identity=key, pins=pins}
-    self.corpsePlans[cacheKey] = {key=key, plan=combined}
-    return combined
-end
-
-function Navigation:RefreshCorpseConsumers()
-    if QuestBeacon.Arrow then QuestBeacon.Arrow:Refresh(self:GetArrowState()) end
-    if QuestBeacon.WorldMapPins then QuestBeacon.WorldMapPins:Refresh() end
-    if QuestBeacon.MinimapPins then QuestBeacon.MinimapPins:MarkDirty() end
-end
-
 function Navigation:StartCorpseNavigation(position)
     local target = nil
     if position and position.available and position.x ~= nil and position.y ~= nil and position.mapID ~= nil then
         target = {
-            available=true, role="corpse", sourceType="corpse", texture="corpse", clusterID=0,
+            available=true, role="corpse", sourceType="corpse", clusterID=0,
             areaID=position.areaID, mapID=position.mapID, x=position.x, y=position.y,
             quest={id=0, title="Your corpse", level=0, complete=false},
             objective={index=0, kind="corpse", text="Return to your body", complete=false},
-            associations={{questID=0, title="Your corpse", text="Return to your body"}},
         }
     end
-    -- Keep a stable override object so the arrow's OnUpdate path does not allocate
-    -- or query the database while the player is running back as a ghost.
     self.corpseState = {available=target ~= nil, player=position, target=target, candidates={}, reasons={}}
     if target then self.corpseState.candidates[1] = target end
-    self.corpseRevision = self.corpseRevision + 1
-    self.corpsePlans = {}
-    self:RefreshCorpseConsumers()
+    if QuestBeacon.Arrow then QuestBeacon.Arrow:Refresh(self:GetArrowState()) end
     return target ~= nil
 end
 
 function Navigation:StopCorpseNavigation()
     if not self.corpseState then return false end
     self.corpseState = nil
-    self.corpseRevision = self.corpseRevision + 1
-    self.corpsePlans = {}
-    self:RefreshCorpseConsumers()
+    if QuestBeacon.Arrow then QuestBeacon.Arrow:Refresh(self.state) end
     return true
 end
 
