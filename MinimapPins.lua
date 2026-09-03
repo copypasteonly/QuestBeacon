@@ -15,6 +15,8 @@ local DISCOVERY_MULTIPLIER = 1.5
 local REDISCOVER_MARGIN_FRACTION = 0.25
 local AREA_CHECK_INTERVAL = 0.5
 local SAFETY_REFRESH_INTERVAL = 1
+local SERVICE_PIN_LEVEL_OFFSET = 5
+local QUEST_PIN_LEVEL_OFFSET = 6
 
 local OUTDOOR_ZOOM = {[0]=466.6666667,[1]=400,[2]=333.3333333,[3]=266.6666667,[4]=200,[5]=133.3333333}
 local INDOOR_ZOOM = {[0]=300,[1]=240,[2]=180,[3]=120,[4]=80,[5]=50}
@@ -95,7 +97,7 @@ end
 function Renderer:GetPin(index)
     if self.pool[index] then return self.pool[index] end
     local frame = CreateFrame("Button", nil, Minimap)
-    frame:SetWidth(14) frame:SetHeight(14) frame:SetFrameLevel(Minimap:GetFrameLevel() + 5)
+    frame:SetWidth(14) frame:SetHeight(14) frame:SetFrameLevel(Minimap:GetFrameLevel() + SERVICE_PIN_LEVEL_OFFSET)
     frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
     frame:SetScript("OnClick", function()
@@ -107,6 +109,11 @@ function Renderer:GetPin(index)
     frame:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     self.pool[index] = frame
     return frame
+end
+
+function Renderer:GetPinFrameLevel(pin)
+    local offset = pin and pin.role == "service" and SERVICE_PIN_LEVEL_OFFSET or QUEST_PIN_LEVEL_OFFSET
+    return Minimap:GetFrameLevel() + offset
 end
 
 function Renderer:HidePins()
@@ -304,6 +311,7 @@ function Renderer:RenderPin(pin, player, width, height, zoomYards, radius, cosin
             frame.texture:SetVertexColor(1, 1, 1, 1)
         end
     end
+    frame:SetFrameLevel(self:GetPinFrameLevel(pin))
     self:ApplyPinSize(frame, pin, zoomYards, pinChanged)
     frame:ClearAllPoints()
     frame:SetPoint("CENTER", Minimap, "CENTER", x, y)

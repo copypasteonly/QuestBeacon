@@ -14,6 +14,8 @@ local MIN_ZOOM = 1
 local MAX_ZOOM = 4
 local ZOOM_STEP = 0.25
 local DRAG_THRESHOLD = 3
+local SERVICE_PIN_FRAME_LEVEL = 20
+local QUEST_PIN_FRAME_LEVEL = 21
 
 local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
@@ -95,7 +97,7 @@ function Renderer:GetPin(index, pool)
     local targetPool = pool or self.pool
     if targetPool[index] then return targetPool[index] end
     local frame = CreateFrame("Button", nil, WorldMapButton)
-    frame:SetWidth(18) frame:SetHeight(18) frame:SetFrameLevel(20) frame:RegisterForClicks("LeftButtonUp")
+    frame:SetWidth(18) frame:SetHeight(18) frame:SetFrameLevel(SERVICE_PIN_FRAME_LEVEL) frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
     frame:SetScript("OnClick", function()
         if this.pin and this.pin.role ~= "service" and this.pin.role ~= "available" then
@@ -106,6 +108,11 @@ function Renderer:GetPin(index, pool)
     frame:SetScript("OnLeave", function() if WorldMapTooltip then WorldMapTooltip:Hide() elseif GameTooltip then GameTooltip:Hide() end end)
     targetPool[index] = frame
     return frame
+end
+
+function Renderer:GetPinFrameLevel(pin)
+    if pin and pin.role == "service" then return SERVICE_PIN_FRAME_LEVEL end
+    return QUEST_PIN_FRAME_LEVEL
 end
 
 function Renderer:GetPinDisplaySize(pin, zoom)
@@ -595,6 +602,7 @@ function Renderer:RenderPlan(area, plan, renderKey)
                     state.shown = state.shown + 1
                     local frame = Renderer:GetPin(state.shown, state.pool)
                     frame.pin = displayPin
+                    frame:SetFrameLevel(Renderer:GetPinFrameLevel(displayPin))
                     frame.texture:SetTexture("Interface\\AddOns\\QuestBeacon\\img\\" .. displayPin.texture)
                     if displayPin.pinType == "spawn" then
                         frame.texture:SetVertexColor(displayPin.colorR, displayPin.colorG, displayPin.colorB, 1)
