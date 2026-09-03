@@ -315,6 +315,45 @@ function Navigation:CollectObjectiveCandidates(candidates, quest, objective, pla
     end
 end
 
+function Navigation:RankCandidatesByNearestSpawn(candidates, player, reasons)
+    local cachedByEntity = {}
+    local candidateIndex
+    for candidateIndex = 1, table.getn(candidates) do
+        local candidate = candidates[candidateIndex]
+        if not candidate.isFallback and candidate.mapID == player.mapID and
+           (candidate.kind == QuestBeacon.DB.KIND_MONSTER or
+            candidate.kind == QuestBeacon.DB.KIND_OBJECT) then
+            local key = tostring(candidate.kind) .. ":" .. tostring(candidate.entryID) ..
+                ":" .. tostring(candidate.mapID)
+            local nearestByCluster = cachedByEntity[key]
+            if not nearestByCluster then
+                nearestByCluster = {}
+                cachedByEntity[key] = nearestByCluster
+                local points, unusableCount, queryError = QuestBeacon.DB:GetEntitySpawnPoints(
+                    candidate.kind, candidate.entryID, candidate.mapID)
+                if queryError then
+                    increment(reasons, "database_error")
+                else
+                    local pointIndex
+                    for pointIndex = 1, table.getn(points or {}) do
+                        local point = points[pointIndex]
+                        local pointDistance = distanceSquared(player, point)
+                        local current = nearestByCluster[point.clusterID]
+                        if not current or pointDistance < current.distanceSquared or
+                           (pointDistance == current.distanceSquared and point.spawnID < current.spawnID) then
+                            nearestByCluster[point.clusterID] = {
+                                spawnID=point.spawnID, distanceSquared=pointDistance,
+                            }
+                        end
+                    end
+                end
+            end
+            local nearest = nearestByCluster[candidate.clusterID]
+            if nearest then candidate.distanceSquared = nearest.distanceSquared end
+        end
+    end
+end
+
 function Navigation:CollectCandidates(activeQuests, player, questFilter, objectiveFilter, reasons)
     local candidates = {}
     local questIndex
@@ -336,6 +375,9 @@ function Navigation:CollectCandidates(activeQuests, player, questFilter, objecti
             end
         end
     end
+    -- Cluster centers are display summaries and can be farther away than an edge
+    -- spawn. Rank by each cluster's closest authored point before choosing one.
+    self:RankCandidatesByNearestSpawn(candidates, player, reasons)
     table.sort(candidates, candidateBefore)
     return candidates
 end
