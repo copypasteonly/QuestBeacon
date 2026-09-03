@@ -194,11 +194,8 @@ Markers.plates = {}
 Markers.initialized = false
 
 local ICON_TEXTURE = "Interface\\AddOns\\QuestBeacon\\img\\complete"
--- Positional inline payload: height, width, offsets, texture size, crop, then the
--- 0-255 tint. A zero texture size disables the crop, so the trailing 255:204:0 is
--- the same yellow SetVertexColor(1, 0.8, 0, 1) applies to the drawn textures.
-local ICON_MARKUP = "|TInterface\\AddOns\\QuestBeacon\\img\\complete:14:14:0:0:0:0:0:0:0:0:255:204:0|t"
 local TARGET_ICON_SIZE = 16
+local TOOLTIP_ICON_SIZE = 14
 local PLATE_ICON_SIZE = 12
 
 -- UnitGUID raises on a token the client does not know, unlike modern clients that
@@ -235,10 +232,6 @@ function Markers:StyleIcon(texture, size)
     texture:SetHeight(size)
 end
 
-function Markers:GetIconMarkup()
-    return ICON_MARKUP
-end
-
 function Markers:ResolveTargetNameRegion()
     if self.targetNameRegion then return self.targetNameRegion end
     local region
@@ -249,6 +242,21 @@ function Markers:ResolveTargetNameRegion()
     end
     self.targetNameRegion = region
     return region
+end
+
+function Markers:EnsureTooltipIcon()
+    if self.tooltipIcon then return self.tooltipIcon end
+    if type(GameTooltip) ~= "table" or type(GameTooltip.CreateTexture) ~= "function" then return nil end
+    local icon = GameTooltip:CreateTexture(nil, "OVERLAY")
+    self:StyleIcon(icon, TOOLTIP_ICON_SIZE)
+    icon:Hide()
+    self.tooltipIcon = icon
+    return icon
+end
+
+function Markers:ClearTooltipMarker()
+    self.tooltipCreatureID = nil
+    if self.tooltipIcon then self.tooltipIcon:Hide() end
 end
 
 function Markers:EnsureTargetIcon()
@@ -305,22 +313,21 @@ function Markers:UpdateTargetFrame()
 end
 
 function Markers:OnTooltipSetUnit()
-    if not self:Enabled("tooltip") then return end
-    if type(GameTooltip) ~= "table" or type(GameTooltip.GetUnitGUID) ~= "function" then return end
+    if not self:Enabled("tooltip") then self:ClearTooltipMarker() return end
+    if type(GameTooltip) ~= "table" or type(GameTooltip.GetUnitGUID) ~= "function" then
+        self:ClearTooltipMarker()
+        return
+    end
     local unitName, guid = GameTooltip:GetUnitGUID()
     local creatureID = self:CreatureIDForGUID(guid)
-    if not creatureID then return end
+    if not creatureID then self:ClearTooltipMarker() return end
     local entries = QuestBeacon.QuestMobIndex:GetEntries(creatureID)
-    if not entries or table.getn(entries) == 0 then return end
-    local marker = self:GetIconMarkup()
+    if not entries or table.getn(entries) == 0 then self:ClearTooltipMarker() return end
+    if self.tooltipCreatureID == creatureID then return end
     local line = type(getglobal) == "function" and getglobal("GameTooltipTextLeft1") or nil
-    if line and type(line.GetText) == "function" and type(line.SetText) == "function" then
-        local text = line:GetText()
-        -- The script can fire more than once for a single tooltip build, so the marker
-        -- already sitting on the name line is what keeps this idempotent.
-        if text and string.find(text, marker, 1, true) then return end
-        if text then line:SetText(text .. " " .. marker) end
-    end
+    local icon = self:EnsureTooltipIcon()
+    if icon and self:AnchorIconToText(icon, line, 3) then icon:Show() end
+    self.tooltipCreatureID = creatureID
     local index
     for index = 1, table.getn(entries) do
         local entry = entries[index]
@@ -340,6 +347,9 @@ function Markers:InstallTooltipHook()
     -- probed and falls back to chaining OnShow.
     if type(GameTooltip.HookScript) == "function" then
         if pcall(GameTooltip.HookScript, GameTooltip, "OnTooltipSetUnit", handler) then
+            local clearHandler = function() QuestBeacon.QuestMobMarkers:ClearTooltipMarker() end
+            pcall(GameTooltip.HookScript, GameTooltip, "OnTooltipCleared", clearHandler)
+            pcall(GameTooltip.HookScript, GameTooltip, "OnHide", clearHandler)
             self.tooltipHooked = true
             return true
         end
