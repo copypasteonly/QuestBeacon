@@ -329,7 +329,6 @@ function Markers:OnTooltipSetUnit()
             GameTooltip:AddLine(tostring(entry.text), 0.85, 0.85, 0.85)
         end
     end
-    if type(GameTooltip.Show) == "function" then GameTooltip:Show() end
 end
 
 function Markers:InstallTooltipHook()
