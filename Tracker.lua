@@ -152,6 +152,12 @@ function Tracker:GetQuestRow(index)
     row.title.text = row.title:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     row.title.text:SetAllPoints(row.title) row.title.text:SetJustifyH("LEFT")
     row.title:SetScript("OnClick", function() Tracker:OnQuestClick(this.questID, arg1) end)
+    row.title:SetScript("OnEnter", function()
+        local quest = QuestBeacon.QuestService:GetQuest(this.questID)
+        Tracker:ShowControlTooltip(this, quest and quest.title or "Quest",
+            "Left-click: fold objectives\nRight-click: open Quest Log\nCtrl-click: show target on map")
+    end)
+    row.title:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     self.questRows[index] = row
     return row
 end
@@ -207,13 +213,52 @@ function Tracker:ToggleFold(questID)
     QuestBeacon.Config:Set("trackerFolds", folds)
 end
 
+function Tracker:FindQuestLogIndex(questID, preferredIndex)
+    local id = tonumber(questID)
+    if not id or id <= 0 or type(C_QuestLog) ~= "table" or
+       type(C_QuestLog.GetQuestIDForLogIndex) ~= "function" then return nil end
+    local preferred = tonumber(preferredIndex)
+    if preferred and preferred > 0 then
+        local rawPreferredID = C_QuestLog.GetQuestIDForLogIndex(preferred)
+        if tonumber(rawPreferredID) == id then return preferred end
+    end
+    if type(GetNumQuestLogEntries) ~= "function" then return nil end
+    local rawEntryCount = GetNumQuestLogEntries()
+    local entryCount = tonumber(rawEntryCount) or 0
+    local index
+    for index = 1, entryCount do
+        local rawQuestID = C_QuestLog.GetQuestIDForLogIndex(index)
+        if tonumber(rawQuestID) == id then return index end
+    end
+    return nil
+end
+
+function Tracker:ShowQuestLog()
+    if not QuestLogFrame then return false end
+    if type(ShowUIPanel) == "function" then
+        ShowUIPanel(QuestLogFrame)
+    elseif type(ToggleQuestLog) == "function" and not QuestLogFrame:IsVisible() then
+        ToggleQuestLog()
+    elseif not QuestLogFrame:IsVisible() then
+        QuestLogFrame:Show()
+    end
+    return true
+end
+
 function Tracker:OpenQuestLog(questID)
     local quest = QuestBeacon.QuestService:GetQuest(questID)
-    if not quest or quest.logOrderUnavailable or not quest.logIndex then return end
-    if QuestLogFrame and not QuestLogFrame:IsVisible() then
-        if type(ToggleQuestLog) == "function" then ToggleQuestLog() else QuestLogFrame:Show() end
+    if not quest then return false end
+    local logIndex = self:FindQuestLogIndex(quest.id,
+        not quest.logOrderUnavailable and quest.logIndex or nil)
+    if not logIndex then
+        self:ShowQuestLog()
+        QuestBeacon:Print("expand the quest's native log header, then right-click it again")
+        return false
     end
-    if type(SelectQuestLogEntry) == "function" then SelectQuestLogEntry(quest.logIndex) end
+    if type(SelectQuestLogEntry) ~= "function" then return false end
+    SelectQuestLogEntry(logIndex)
+    self:ShowQuestLog()
+    return true
 end
 
 function Tracker:OnQuestClick(questID, button)
