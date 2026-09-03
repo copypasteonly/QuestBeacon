@@ -101,6 +101,11 @@ def validate_database(path: Path) -> ValidationResult:
         ).fetchone()[0]
         if invalid_spawns:
             errors.append(f"entity_spawn_points has {invalid_spawns} invalid row(s)")
+        invalid_respawns = connection.execute(
+            "SELECT count(*) FROM entity_spawn_points WHERE respawn_seconds IS NOT NULL AND respawn_seconds <= 0"
+        ).fetchone()[0]
+        if invalid_respawns:
+            errors.append(f"entity_spawn_points has {invalid_respawns} invalid respawn duration(s)")
         converted_spawns_missing = connection.execute(
             "SELECT count(*) FROM entity_spawn_points WHERE conversion_status LIKE 'converted_%' "
             "AND (world_x IS NULL OR world_y IS NULL OR map_id IS NULL)"

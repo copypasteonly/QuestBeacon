@@ -102,22 +102,34 @@ function Availability:CaptureContext(activeQuests)
     raceID = tonumber(raceID)
     classID = tonumber(classID)
     local active = {}
-    local activeIDs = {}
+    local progressionIDs = {}
+    local progressionSeen = {}
     local index
+    local function addProgressionID(value)
+        local id = positiveInteger(value)
+        if id and not progressionSeen[id] then
+            progressionSeen[id] = true
+            table.insert(progressionIDs, id)
+        end
+    end
     for index = 1, table.getn(activeQuests or {}) do
         active[activeQuests[index].id] = true
-        table.insert(activeIDs, activeQuests[index].id)
+        addProgressionID(activeQuests[index].id)
     end
+    QuestBeacon.QuestHistory:Initialize()
+    local completed = copySet(QuestBeaconHistory and QuestBeaconHistory.completed)
+    local questID
+    for questID in pairs(completed) do addProgressionID(questID) end
+    for questID in pairs(self.serverCompleted) do addProgressionID(questID) end
     local progressedPast = {}
     local progressionError = nil
     if QuestBeacon.DB and type(QuestBeacon.DB.GetProgressedPastQuestIDs) == "function" then
-        progressedPast, progressionError = QuestBeacon.DB:GetProgressedPastQuestIDs(activeIDs)
+        progressedPast, progressionError = QuestBeacon.DB:GetProgressedPastQuestIDs(progressionIDs)
         if not progressedPast then progressedPast = {} end
     end
-    QuestBeacon.QuestHistory:Initialize()
     return {level=tonumber(UnitLevel("player")) or 0, raceBit=bitForID(raceID),
         classBit=bitForID(classID), active=active,
-        completed=copySet(QuestBeaconHistory and QuestBeaconHistory.completed),
+        completed=completed,
         serverCompleted=self.serverCompleted,
         progressedPast=progressedPast, progressionError=progressionError,
         lowLevel=QuestBeacon.Config:Get("availability.lowLevel") and true or false,

@@ -480,7 +480,7 @@ function DB:GetEntitySpawnPointsForScope(kind, entryID, scope, scopeID)
     end
     local columns, rows, queryError = self:QueryRaw(
         "SELECT kind,entry_id,spawn_id,cluster_id,area_id,mapped_area_id,map_id," ..
-        "world_x,world_y,map_x,map_y,authored_count,conversion_status FROM entity_spawn_points " ..
+        "world_x,world_y,map_x,map_y,respawn_seconds,authored_count,conversion_status FROM entity_spawn_points " ..
         "WHERE kind=" .. validatedKind .. " AND entry_id=" .. validatedID .. " AND " .. scopeClause ..
         " ORDER BY cluster_id,spawn_id"
     )
@@ -498,8 +498,9 @@ function DB:GetEntitySpawnPointsForScope(kind, entryID, scope, scopeID)
                 kind=tonumber(row[1]), entryID=tonumber(row[2]), spawnID=tonumber(row[3]),
                 clusterID=tonumber(row[4]), parentClusterID=tonumber(row[4]), areaID=tonumber(row[5]),
                 mappedAreaID=nullableNumber(row[6]), mapID=mapID, x=worldX, y=worldY,
-                mapX=tonumber(row[10]), mapY=tonumber(row[11]), authoredCount=tonumber(row[12]) or 1,
-                conversionStatus=row[13], pointCount=1, radius=0, isNoise=false,
+                mapX=tonumber(row[10]), mapY=tonumber(row[11]), respawnSeconds=nullableNumber(row[12]),
+                authoredCount=tonumber(row[13]) or 1,
+                conversionStatus=row[14], pointCount=1, radius=0, isNoise=false,
             })
         else
             unusableCount = unusableCount + 1

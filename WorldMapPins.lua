@@ -23,6 +23,24 @@ local function normalizedName(value)
     return string.lower(string.gsub(value or "", "[^%w]", ""))
 end
 
+local function durationText(seconds)
+    if type(SecondsToTime) == "function" then return SecondsToTime(seconds) end
+    if seconds >= 3600 then
+        return string.format("%dh %dm", math.floor(seconds / 3600), math.floor(seconds / 60) - math.floor(seconds / 3600) * 60)
+    elseif seconds >= 60 then
+        return string.format("%dm %ds", math.floor(seconds / 60), seconds - math.floor(seconds / 60) * 60)
+    end
+    return tostring(seconds) .. "s"
+end
+
+local function respawnText(pin)
+    local minimum = pin and (pin.respawnMinimumSeconds or pin.respawnSeconds)
+    local maximum = pin and (pin.respawnMaximumSeconds or pin.respawnSeconds)
+    if not minimum then return nil end
+    if maximum and maximum ~= minimum then return durationText(minimum) .. " - " .. durationText(maximum) end
+    return durationText(minimum)
+end
+
 function Renderer:OpenArea(areaID)
     local area = areaID and QuestBeacon.DB:GetArea(areaID) or nil
     if not area then return false end
@@ -80,7 +98,7 @@ function Renderer:GetPin(index, pool)
     frame:SetWidth(18) frame:SetHeight(18) frame:SetFrameLevel(20) frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
     frame:SetScript("OnClick", function()
-        if this.pin and this.pin.role ~= "service" then
+        if this.pin and this.pin.role ~= "service" and this.pin.role ~= "available" then
             QuestBeacon.PinService:SelectPin(this.pin)
         end
     end)
@@ -480,6 +498,8 @@ function Renderer:ShowTooltip(frame)
         if merged <= 1 and (frame.pin.authoredCount or 1) > 1 then
             tooltip:AddLine(tostring(frame.pin.authoredCount) .. " authored spawns at this location", 0.65, 0.85, 1)
         end
+        local respawn = respawnText(frame.pin)
+        if respawn then tooltip:AddLine("Respawn: " .. respawn, 0.75, 0.85, 1) end
     end
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
@@ -536,6 +556,14 @@ function Renderer:MergeSpawnForDisplay(state, pin, x, y)
             end
         end
         existing.authoredCount = (existing.authoredCount or 1) + (pin.authoredCount or 1)
+        if pin.respawnMinimumSeconds or pin.respawnSeconds then
+            local minimum = pin.respawnMinimumSeconds or pin.respawnSeconds
+            local maximum = pin.respawnMaximumSeconds or pin.respawnSeconds
+            existing.respawnMinimumSeconds = math.min(
+                existing.respawnMinimumSeconds or existing.respawnSeconds or minimum, minimum)
+            existing.respawnMaximumSeconds = math.max(
+                existing.respawnMaximumSeconds or existing.respawnSeconds or maximum, maximum)
+        end
         return nil
     end
     local display = copySpawnPin(pin)

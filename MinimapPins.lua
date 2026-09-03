@@ -32,6 +32,24 @@ local function now()
     return 0
 end
 
+local function durationText(seconds)
+    if type(SecondsToTime) == "function" then return SecondsToTime(seconds) end
+    if seconds >= 3600 then
+        return string.format("%dh %dm", math.floor(seconds / 3600), math.floor(seconds / 60) - math.floor(seconds / 3600) * 60)
+    elseif seconds >= 60 then
+        return string.format("%dm %ds", math.floor(seconds / 60), seconds - math.floor(seconds / 60) * 60)
+    end
+    return tostring(seconds) .. "s"
+end
+
+local function respawnText(pin)
+    local minimum = pin and (pin.respawnMinimumSeconds or pin.respawnSeconds)
+    local maximum = pin and (pin.respawnMaximumSeconds or pin.respawnSeconds)
+    if not minimum then return nil end
+    if maximum and maximum ~= minimum then return durationText(minimum) .. " - " .. durationText(maximum) end
+    return durationText(minimum)
+end
+
 function Renderer:GetZoomYards()
     local zoom = tonumber(Minimap:GetZoom()) or 0
     local inside = tonumber(safeGetCVar("minimapInsideZoom"))
@@ -81,7 +99,7 @@ function Renderer:GetPin(index)
     frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
     frame:SetScript("OnClick", function()
-        if this.pin and this.pin.role ~= "service" then
+        if this.pin and this.pin.role ~= "service" and this.pin.role ~= "available" then
             QuestBeacon.PinService:SelectPin(this.pin)
         end
     end)
@@ -121,6 +139,8 @@ function Renderer:ShowTooltip(frame)
     if frame.pin.pinType == "spawn" and (frame.pin.authoredCount or 1) > 1 then
         GameTooltip:AddLine(tostring(frame.pin.authoredCount) .. " authored spawns at this location", 0.65, 0.85, 1)
     end
+    local respawn = frame.pin.pinType == "spawn" and respawnText(frame.pin) or nil
+    if respawn then GameTooltip:AddLine("Respawn: " .. respawn, 0.75, 0.85, 1) end
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
     if distance then GameTooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end

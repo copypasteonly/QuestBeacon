@@ -578,7 +578,8 @@ function Navigation:SetTrackingMode(mode, questID, objectiveIndex)
 end
 
 function Navigation:SelectPinTarget(pin)
-    if not pin or not pin.quest or pin.mapID == nil or pin.x == nil or pin.y == nil then return false end
+    if not pin or pin.role == "available" or not pin.quest or
+       pin.mapID == nil or pin.x == nil or pin.y == nil then return false end
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     local selected = pin
     if pin.spawnMembers and table.getn(pin.spawnMembers) > 0 and player and player.available then
@@ -725,9 +726,7 @@ function Navigation:AutoResolve(initial)
     local state
     if self.trackingMode == "pin" and self.pinnedTarget then
         local pinQuest = QuestBeacon.QuestService:GetQuest(self.pinnedTarget.quest.id)
-        local pinInvalid = self.pinnedTarget.role == "available" and
-            (pinQuest ~= nil or QuestBeacon.QuestHistory:IsComplete(self.pinnedTarget.quest.id))
-        if self.pinnedTarget.role ~= "available" and not pinQuest then pinInvalid = true end
+        local pinInvalid = self.pinnedTarget.role == "available" or not pinQuest
         if pinInvalid then
             self.trackingMode = "auto"
             self.pinnedTarget = nil

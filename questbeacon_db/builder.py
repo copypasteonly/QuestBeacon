@@ -70,6 +70,21 @@ def _authored_coordinate_count(entity: Any) -> int:
     )
 
 
+def _respawn_seconds(coordinate: dict[Any, Any]) -> int | None:
+    try:
+        seconds = int(float(coordinate.get(4, 0)))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return seconds if seconds > 0 else None
+
+
+def _preferred_respawn(counts: Counter[int | None]) -> int | None:
+    known = [(count, seconds) for seconds, count in counts.items() if seconds is not None]
+    if not known:
+        return None
+    return min(known, key=lambda row: (-row[0], row[1]))[1]
+
+
 def _coordinate_rows(
     snapshot: PfQuestSnapshot,
     converter: CoordinateConverter,
@@ -84,10 +99,12 @@ def _coordinate_rows(
                 continue
             converted_groups: dict[tuple[int, int, int, str], list[SpawnPoint]] = defaultdict(list)
             failed: Counter[tuple[int, float, float, CoordinateResult]] = Counter()
+            respawns: dict[tuple[int, float, float], Counter[int | None]] = defaultdict(Counter)
             for coordinate in _values(entity.get("coords", {})):
                 if not isinstance(coordinate, dict) or not all(key in coordinate for key in (1, 2, 3)):
                     continue
                 map_x, map_y, area_id = float(coordinate[1]), float(coordinate[2]), int(coordinate[3])
+                respawns[(area_id, map_x, map_y)][_respawn_seconds(coordinate)] += 1
                 result = converter.convert(area_id, map_x, map_y, zone_transforms)
                 stats[result.status] += 1
                 if result.world_x is None or result.world_y is None or result.map_id is None:
@@ -121,11 +138,13 @@ def _coordinate_rows(
                         spawn_id += 1
                         spawn_rows.append((kind, int(entry_id), spawn_id, cluster_id, area_id, mapped_area_id,
                                            map_id, point.world_x, point.world_y, point.map_x, point.map_y,
+                                           _preferred_respawn(respawns[(area_id, point.map_x, point.map_y)]),
                                            point_counts[point], status))
                 else:
                     spawn_id += 1
                     spawn_rows.append((kind, int(entry_id), spawn_id, cluster_id, area_id, mapped_area_id,
-                                       map_id, None, None, map_x, map_y, failed_count, status))
+                                       map_id, None, None, map_x, map_y,
+                                       _preferred_respawn(respawns[(area_id, map_x, map_y)]), failed_count, status))
     return cluster_rows, spawn_rows, stats
 
 
@@ -368,8 +387,8 @@ def _write_database(
             _insert_all(connection, "entity_clusters", ("kind", "entry_id", "cluster_id", "area_id", "mapped_area_id", "map_id",
                         "world_x", "world_y", "map_x", "map_y", "point_count", "radius", "is_noise", "conversion_status"), cluster_rows)
             _insert_all(connection, "entity_spawn_points", ("kind", "entry_id", "spawn_id", "cluster_id", "area_id",
-                        "mapped_area_id", "map_id", "world_x", "world_y", "map_x", "map_y", "authored_count",
-                        "conversion_status"), spawn_rows)
+                        "mapped_area_id", "map_id", "world_x", "world_y", "map_x", "map_y", "respawn_seconds",
+                        "authored_count", "conversion_status"), spawn_rows)
 
             item_rows = []
             for item_id, item in _items(data["items"].get("data", {})):

@@ -1,9 +1,9 @@
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys=ON;
 PRAGMA application_id=1363298644;
-PRAGMA user_version=7;
+PRAGMA user_version=8;
 
 CREATE TABLE maps (
   id INTEGER PRIMARY KEY,
@@ -80,6 +80,7 @@ CREATE TABLE entity_spawn_points (
   map_id INTEGER,
   world_x REAL, world_y REAL,
   map_x REAL NOT NULL, map_y REAL NOT NULL,
+  respawn_seconds INTEGER CHECK (respawn_seconds > 0),
   authored_count INTEGER NOT NULL CHECK (authored_count >= 1),
   conversion_status TEXT NOT NULL,
   PRIMARY KEY (kind, entry_id, spawn_id),

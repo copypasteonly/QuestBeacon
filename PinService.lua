@@ -59,6 +59,14 @@ local function addPin(result, seen, pin)
         if (pin.authoredCount or 1) > (existing.authoredCount or 1) then
             existing.authoredCount = pin.authoredCount
         end
+        if pin.respawnSeconds then
+            existing.respawnMinimumSeconds = math.min(
+                existing.respawnMinimumSeconds or existing.respawnSeconds or pin.respawnSeconds,
+                pin.respawnSeconds)
+            existing.respawnMaximumSeconds = math.max(
+                existing.respawnMaximumSeconds or existing.respawnSeconds or pin.respawnSeconds,
+                pin.respawnSeconds)
+        end
         return
     end
     seen[key] = pin
@@ -102,6 +110,8 @@ local function spawnPin(quest, objective, point, role, sourceType)
         areaID=point.areaID, mappedAreaID=point.mappedAreaID, mapID=point.mapID,
         x=point.x, y=point.y, mapX=point.mapX, mapY=point.mapY,
         pointCount=1, radius=0, isNoise=false, conversionStatus=point.conversionStatus,
+        respawnSeconds=point.respawnSeconds, respawnMinimumSeconds=point.respawnSeconds,
+        respawnMaximumSeconds=point.respawnSeconds,
         authoredCount=point.authoredCount or 1, isSpawnPoint=true,
         colorR=red, colorG=green, colorB=blue,
         quest=quest, objective=objective, sourceType=sourceType,
