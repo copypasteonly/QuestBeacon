@@ -291,7 +291,8 @@ function Renderer:Discover(player, zoomYards)
                         for pinIndex = 1, table.getn(bucket) do
                             local pin = bucket[pinIndex]
                             if QuestBeacon.MapQuestVisibility then
-                                pin = QuestBeacon.MapQuestVisibility:FilterPin(pin, disabledMapQuests)
+                                pin = QuestBeacon.MapQuestVisibility:FilterPin(
+                                    pin, disabledMapQuests, settings and settings.hidePvP)
                             end
                             if pin and pinEnabled(pin, settings) then
                                 local deltaX = pin.x - player.x

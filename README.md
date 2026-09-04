@@ -40,7 +40,7 @@ QuestBeacon disables itself with a chat message if a required API or HearthDB fu
 
 ## Getting started
 
-Use `/qbeacon settings` or the cog button on the tracker to configure the arrow, tracker, map pins, minimap pins, service markers, and available-quest filters.
+Use `/qbeacon settings` or the cog button on the tracker to configure the arrow, tracker, map pins, minimap pins, service markers, and available-quest filters. PvP quests can be hidden independently on the world map and minimap.
 
 Available-quest pins are predicted from the local database until you open a questgiver. QuestBeacon then uses the server's offered quest list for that NPC. At login it imports completed quest IDs from compatible completion APIs or OctoWoW's `.queststatus` service and saves them in per-character history.
 

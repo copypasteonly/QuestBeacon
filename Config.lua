@@ -3,7 +3,7 @@ local Config = QuestBeacon.Config
 
 Config.listeners = {}
 Config.defaults = {
-    configVersion = 5,
+    configVersion = 6,
     point = "CENTER", x = 0, y = -100, scale = 1, shown = true,
     trackingMode = "auto", arrowFontSize = 12,
     trackerShown = true, trackerLocked = false, trackerFontSize = 12,
@@ -15,9 +15,9 @@ Config.defaults = {
     trackerShowLevels = true, trackerExpandObjectives = false,
     trackerFolds = {},
     worldMap = { objectives=true, itemSources=true, turnIns=true, available=true,
-        spawnPoints=true, objectiveClusters=true },
+        spawnPoints=true, objectiveClusters=true, hidePvP=false },
     minimap = { objectives=true, itemSources=true, turnIns=true, available=true,
-        spawnPoints=true, objectiveClusters=false },
+        spawnPoints=true, objectiveClusters=false, hidePvP=false },
     worldMapServices = { auctioneer=false, banker=false, battlemaster=false, flight=false,
         innkeeper=false, mailbox=false, meetingstone=false, repair=false, spirithealer=false,
         stablemaster=false, vendor=false },
@@ -100,6 +100,13 @@ function Config:Initialize()
         end
         QuestBeaconSettings.disabledMapQuests = normalized
         QuestBeaconSettings.configVersion = 5
+    end
+    if (tonumber(QuestBeaconSettings.configVersion) or 0) < 6 then
+        if type(QuestBeaconSettings.worldMap) ~= "table" then QuestBeaconSettings.worldMap = {} end
+        if type(QuestBeaconSettings.minimap) ~= "table" then QuestBeaconSettings.minimap = {} end
+        if QuestBeaconSettings.worldMap.hidePvP == nil then QuestBeaconSettings.worldMap.hidePvP = false end
+        if QuestBeaconSettings.minimap.hidePvP == nil then QuestBeaconSettings.minimap.hidePvP = false end
+        QuestBeaconSettings.configVersion = 6
     end
     local questMobs = QuestBeaconSettings.questMobs
     if type(questMobs) == "table" and

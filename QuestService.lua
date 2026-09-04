@@ -5,6 +5,9 @@ QuestService.activeQuests = {}
 QuestService.questsByID = {}
 QuestService.pendingRequests = {}
 QuestService.failedRequests = {}
+QuestService.pvpByQuestID = {}
+QuestService.pendingPvPRequests = {}
+QuestService.failedPvPRequests = {}
 QuestService.collapsedMembership = {}
 QuestService.refreshing = false
 QuestService.refreshAgain = false
@@ -30,6 +33,34 @@ end
 
 local function completed(value)
     return value == true or tonumber(value) == 1
+end
+
+local function isPvPTag(value)
+    local localized = type(PVP) == "string" and PVP or "PvP"
+    return value == localized or value == "PvP"
+end
+
+function QuestService:CachePvPDetails(questID)
+    local id = positiveInteger(questID)
+    if not id or not C_QuestLog.IsQuestDataCachedByID(id) then return nil end
+    local details = C_QuestLog.GetQuestDetails(id)
+    if not details then return nil end
+    local value = isPvPTag(details.questType)
+    self.pvpByQuestID[id] = value
+    return value
+end
+
+function QuestService:GetQuestPvP(questID, requestIfMissing)
+    local id = positiveInteger(questID)
+    if not id then return nil end
+    if self.pvpByQuestID[id] ~= nil then return self.pvpByQuestID[id] end
+    local cached = self:CachePvPDetails(id)
+    if cached ~= nil or not requestIfMissing or self.pendingPvPRequests[id] or
+       self.failedPvPRequests[id] then return cached end
+    -- The result event may fire before RequestLoadQuestByID returns.
+    self.pendingPvPRequests[id] = true
+    C_QuestLog.RequestLoadQuestByID(id)
+    return self.pvpByQuestID[id]
 end
 
 local function itemCount(itemID)
@@ -281,7 +312,8 @@ function QuestService:BuildQuest(entry)
     local title, level, questTag, isHeader, isCollapsed, isComplete = GetQuestLogTitle(entry.logIndex)
     local quest = {id=entry.id, logIndex=entry.logIndex, title=title or ("Quest " .. tostring(entry.id)),
         level=tonumber(level) or 0, complete=completed(isComplete), pendingData=false,
-        unresolvedReason=nil, objectives={}}
+        unresolvedReason=nil, objectives={}, isPvP=isPvPTag(questTag)}
+    self.pvpByQuestID[entry.id] = quest.isPvP
     if not C_QuestLog.IsQuestDataCachedByID(entry.id) then
         if self.failedRequests[entry.id] then quest.unresolvedReason = "quest_data_unavailable" return quest end
         quest.pendingData = true quest.unresolvedReason = "pending_static_data"
@@ -315,6 +347,8 @@ function QuestService:BuildRecoveredQuest(entry)
     if not details then quest.unresolvedReason = "quest_data_unavailable" return quest end
     quest.title = details.title or quest.title
     quest.level = tonumber(details.level) or 0
+    quest.isPvP = isPvPTag(details.questType)
+    self.pvpByQuestID[entry.id] = quest.isPvP
     local requirements = details.requirements or {}
     local index
     for index = 1, table.getn(requirements) do
@@ -344,7 +378,8 @@ function QuestService:UpdateStateRevision(activeQuests)
     for index = 1, table.getn(activeQuests) do
         local quest = activeQuests[index]
         table.insert(parts, table.concat({tostring(quest.id), tostring(quest.title or ""),
-            quest.complete and "1" or "0", quest.pendingData and "1" or "0"}, ":"))
+            quest.complete and "1" or "0", quest.pendingData and "1" or "0",
+            quest.isPvP and "1" or "0"}, ":"))
         local objectiveIndex
         for objectiveIndex = 1, table.getn(quest.objectives) do
             local objective = quest.objectives[objectiveIndex]
@@ -426,8 +461,27 @@ end
 
 function QuestService:OnQuestDataLoaded(questID, success)
     local id = positiveInteger(questID)
-    if not id or not self.pendingRequests[id] then return end
-    self.pendingRequests[id] = nil
-    if success then self.failedRequests[id] = nil else self.failedRequests[id] = true end
-    self:Refresh()
+    if not id then return false end
+    local pvpChanged = false
+    if self.pendingPvPRequests[id] then
+        self.pendingPvPRequests[id] = nil
+        if success then
+            self.failedPvPRequests[id] = nil
+            local previous = self.pvpByQuestID[id]
+            local resolved = self:CachePvPDetails(id)
+            if resolved == nil then
+                self.failedPvPRequests[id] = true
+            elseif previous ~= resolved then
+                pvpChanged = true
+            end
+        else
+            self.failedPvPRequests[id] = true
+        end
+    end
+    if self.pendingRequests[id] then
+        self.pendingRequests[id] = nil
+        if success then self.failedRequests[id] = nil else self.failedRequests[id] = true end
+        self:Refresh()
+    end
+    return pvpChanged
 end

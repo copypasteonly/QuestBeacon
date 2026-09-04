@@ -613,7 +613,8 @@ function Renderer:RenderPlan(area, plan, renderKey)
             state.position = state.position + 1
             count = count + 1
             if QuestBeacon.MapQuestVisibility then
-                pin = QuestBeacon.MapQuestVisibility:FilterPin(pin, state.disabledMapQuests)
+                pin = QuestBeacon.MapQuestVisibility:FilterPin(
+                    pin, state.disabledMapQuests, state.settings and state.settings.hidePvP)
             end
             if pin and pinEnabled(pin, state.settings) then
                 local x, y = Renderer:Project(pin, state.area)

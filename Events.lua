@@ -201,7 +201,16 @@ function Coordinator:OnEvent(eventName, first, second)
         if QuestBeacon.MinimapPins then QuestBeacon.MinimapPins:MarkDirty() end
     elseif eventName == "QUEST_DATA_LOAD_RESULT" then
         if QuestBeacon.QuestService then
-            QuestBeacon.QuestService:OnQuestDataLoaded(tonumber(first), tonumber(second) == 1)
+            local pvpChanged = QuestBeacon.QuestService:OnQuestDataLoaded(
+                tonumber(first), tonumber(second) == 1)
+            if pvpChanged and QuestBeacon.WorldMapPins then
+                QuestBeacon.WorldMapPins.filterRevision = QuestBeacon.WorldMapPins.filterRevision + 1
+                QuestBeacon.WorldMapPins:Refresh()
+            end
+            if pvpChanged and QuestBeacon.MinimapPins then
+                QuestBeacon.MinimapPins.filterRevision = QuestBeacon.MinimapPins.filterRevision + 1
+                QuestBeacon.MinimapPins:MarkDirty()
+            end
             self.questDirty = true
         end
     elseif eventName == "PLAYER_DEAD" then

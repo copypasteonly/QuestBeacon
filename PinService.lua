@@ -47,7 +47,7 @@ local function displaySettings(path)
         if type(configured) == "table" then return configured end
     end
     return {objectives=true, itemSources=true, turnIns=true, available=true,
-        spawnPoints=true, objectiveClusters=true}
+        spawnPoints=true, objectiveClusters=true, hidePvP=false}
 end
 
 local function areaMatches(cluster, areaID)
@@ -168,6 +168,7 @@ function Pins:PlanKey(areaID, availability)
         minimap.objectives and "1" or "0", minimap.itemSources and "1" or "0",
         minimap.turnIns and "1" or "0", minimap.available and "1" or "0",
         minimap.spawnPoints and "1" or "0", minimap.objectiveClusters and "1" or "0",
+        world.hidePvP and "1" or "0", minimap.hidePvP and "1" or "0",
     }, "")
     return table.concat({tostring(areaID), tostring(self.revision), tostring(questRevision),
         tostring(historyRevision), tostring(availabilityRevision), displayKey}, ":")
@@ -243,8 +244,11 @@ function Pins:AddEnderPins(result, seen, areaID, quest)
     end
 end
 
-function Pins:AddAvailablePin(result, seen, row)
-    local quest = {id=row.questID, title=row.title or ("Quest " .. row.questID), level=row.level}
+function Pins:AddAvailablePin(result, seen, row, classifyPvP)
+    local isPvP = QuestBeacon.QuestService.GetQuestPvP and
+        QuestBeacon.QuestService:GetQuestPvP(row.questID, classifyPvP) or nil
+    local quest = {id=row.questID, title=row.title or ("Quest " .. row.questID), level=row.level,
+        isPvP=isPvP}
     local objective = {index=9999, kind="available", entryID=row.entryID, text="Available quest"}
     addPin(result, seen, clusterPin(quest, objective, row, "available", "available", "available"))
 end
@@ -302,6 +306,7 @@ function Pins:RequestPlan(areaID)
             (minimap.itemSources and minimap.spawnPoints),
     }
     local includeTurnIns = world.turnIns or minimap.turnIns
+    local classifyPvP = world.hidePvP or minimap.hidePvP
     local quests = QuestBeacon.QuestService:GetActiveQuests()
     local activeQuestIDs = {}
     local questIndex, objectiveIndex
@@ -363,7 +368,7 @@ function Pins:RequestPlan(areaID)
                 Pins:AddEnderPins(state.pins, state.seen, id, task.quest)
             else
                 state.position = state.position + 1
-                Pins:AddAvailablePin(state.pins, state.seen, task.row)
+                Pins:AddAvailablePin(state.pins, state.seen, task.row, classifyPvP)
             end
             count = count + 1
         end

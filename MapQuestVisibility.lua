@@ -57,12 +57,21 @@ function Visibility:GetQuestLabel(questID, fallbackTitle, fallbackLevel)
     return tostring(title)
 end
 
-function Visibility:FilterPin(pin, disabledMapQuests)
+local function questIsPvP(questID, quest)
+    if quest and quest.isPvP ~= nil then return quest.isPvP end
+    if QuestBeacon.QuestService and QuestBeacon.QuestService.GetQuestPvP then
+        return QuestBeacon.QuestService:GetQuestPvP(questID, false)
+    end
+    return false
+end
+
+function Visibility:FilterPin(pin, disabledMapQuests, hidePvP)
     if not pin or pin.role == "service" then return pin end
     local disabled = disabledMapQuests or QuestBeacon.Config:Get("disabledMapQuests") or {}
     local associations = pin.associations or {}
     if table.getn(associations) == 0 then
         if pin.quest and disabled[positiveInteger(pin.quest.id)] then return nil end
+        if hidePvP and pin.quest and questIsPvP(pin.quest.id, pin.quest) then return nil end
         return pin
     end
     local visible = {}
@@ -71,7 +80,12 @@ function Visibility:FilterPin(pin, disabledMapQuests)
     for index = 1, table.getn(associations) do
         local association = associations[index]
         local questID = positiveInteger(association.questID)
-        if questID and disabled[questID] then removed = true else table.insert(visible, association) end
+        local quest = association.quest
+        if (questID and disabled[questID]) or (hidePvP and questIsPvP(questID, quest)) then
+            removed = true
+        else
+            table.insert(visible, association)
+        end
     end
     if table.getn(visible) == 0 then return nil end
     if not removed then return pin end
