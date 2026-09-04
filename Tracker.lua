@@ -38,7 +38,7 @@ local function setFontSize(font, size)
 end
 
 local function candidateDetails(questID, playerAreaID)
-    local candidates = QuestBeacon.Navigation:GetCandidates()
+    local candidates = QuestBeacon.Navigation:GetTrackerCandidates()
     local distance = 999999999999
     local currentArea = false
     local index
@@ -80,12 +80,14 @@ function Tracker:GetQuestProgress(quest)
 end
 
 local function before(first, second)
-    if first.watched ~= second.watched then return first.watched end
-    if first.currentArea ~= second.currentArea then return first.currentArea end
     if QuestBeacon.Config:Get("questSort") == "level" then
+        if first.watched ~= second.watched then return first.watched end
+        if first.currentArea ~= second.currentArea then return first.currentArea end
         if first.quest.level ~= second.quest.level then return first.quest.level < second.quest.level end
-    elseif first.distance ~= second.distance then
-        return first.distance < second.distance
+    else
+        if first.currentArea ~= second.currentArea then return first.currentArea end
+        if first.distance ~= second.distance then return first.distance < second.distance end
+        if first.watched ~= second.watched then return first.watched end
     end
     if first.progress ~= second.progress then return first.progress > second.progress end
     local firstTitle = string.lower(tostring(first.quest.title or ""))

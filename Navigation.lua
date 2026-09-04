@@ -2,6 +2,7 @@ QuestBeacon.Navigation = QuestBeacon.Navigation or {}
 local Navigation = QuestBeacon.Navigation
 
 Navigation.state = { available = false, player = nil, target = nil, candidates = {}, reasons = {} }
+Navigation.trackerCandidates = {}
 Navigation.trackingMode = "auto"
 Navigation.trackedQuestID = nil
 Navigation.trackedObjectiveIndex = nil
@@ -633,6 +634,46 @@ function Navigation:GetCandidates()
     return self.state.candidates or {}
 end
 
+function Navigation:GetTrackerCandidates()
+    return self.trackerCandidates or {}
+end
+
+function Navigation:RefreshTrackerCandidates(activeQuests, player, seedCandidates)
+    if not player or not player.available then
+        self.trackerCandidates = {}
+        return
+    end
+    local reasons = {}
+    local candidates = {}
+    local index
+    if seedCandidates then
+        for index = 1, table.getn(seedCandidates) do
+            table.insert(candidates, seedCandidates[index])
+        end
+    else
+        candidates = self:CollectCandidates(activeQuests or {}, player, nil, nil, reasons)
+    end
+
+    -- Automatic navigation only needs one usable candidate in total. The tracker
+    -- needs location evidence for every quest, including per-quest fallbacks.
+    local represented = {}
+    for index = 1, table.getn(candidates) do
+        represented[candidates[index].quest.id] = true
+    end
+    for index = 1, table.getn(activeQuests or {}) do
+        local quest = activeQuests[index]
+        if not represented[quest.id] then
+            local fallbacks = self:CollectFallbacks({quest}, player, nil, reasons)
+            local fallbackIndex
+            for fallbackIndex = 1, table.getn(fallbacks) do
+                table.insert(candidates, fallbacks[fallbackIndex])
+            end
+        end
+    end
+    table.sort(candidates, candidateBefore)
+    self.trackerCandidates = candidates
+end
+
 function Navigation:SetTrackingMode(mode, questID, objectiveIndex)
     if mode == "auto" then
         self.trackingMode = "auto"
@@ -751,6 +792,7 @@ end
 
 function Navigation:Clear()
     self.state = { available = false, player = nil, target = nil, candidates = {}, reasons = {} }
+    self.trackerCandidates = {}
     self.lastAutomaticSignature = nil
     self.lastAreaID = nil
     self.lastMapID = nil
@@ -821,6 +863,7 @@ end
 function Navigation:AutoResolve(initial)
     local started = type(GetTime) == "function" and GetTime() or 0
     local player = QuestBeacon.PositionService:GetPlayerPosition()
+    local activeQuests = QuestBeacon.QuestService:GetActiveQuests()
     local state
     if self.trackingMode == "pin" and self.pinnedTarget then
         local pinQuest = QuestBeacon.QuestService:GetQuest(self.pinnedTarget.quest.id)
@@ -828,14 +871,19 @@ function Navigation:AutoResolve(initial)
         if pinInvalid then
             self.trackingMode = "auto"
             self.pinnedTarget = nil
-            state = self:Resolve(QuestBeacon.QuestService:GetActiveQuests(), player, nil)
+            state = self:Resolve(activeQuests, player, nil)
         else
             state = {available=true, player=player, target=self.pinnedTarget, candidates={self.pinnedTarget}, reasons={}}
             self.state = state
         end
     else
-        state = self:Resolve(QuestBeacon.QuestService:GetActiveQuests(), player, nil)
+        state = self:Resolve(activeQuests, player, nil)
     end
+    local seedCandidates = nil
+    if self.trackingMode == "auto" or self.trackingMode == "manual" then
+        seedCandidates = state.candidates
+    end
+    self:RefreshTrackerCandidates(activeQuests, player, seedCandidates)
     if player.available then
         self.lastAreaID = player.areaID
         self.lastMapID = player.mapID
@@ -885,6 +933,7 @@ function Navigation:RefreshPosition(player)
         return self:AutoResolve(false)
     end
     self.state = state
+    self:RefreshCandidateDistances(self.trackerCandidates, player)
     self.lastAreaID = player.areaID
     self.lastMapID = player.mapID
     self.lastPlayerX = player.x
