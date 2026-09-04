@@ -185,7 +185,7 @@ function Coordinator:OnEvent(eventName, first, second)
         end
     elseif eventName == "CHAT_MSG_ADDON" then
         if QuestBeacon.AvailabilityService then
-            QuestBeacon.AvailabilityService:OnTurtleQuestData(first, second)
+            QuestBeacon.AvailabilityService:OnServerQuestData(first, second)
         end
     elseif eventName == "QUEST_LOG_UPDATE" or eventName == "UNIT_QUEST_LOG_CHANGED" then
         self:MarkQuestDirty(true)

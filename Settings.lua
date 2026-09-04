@@ -132,6 +132,9 @@ end
 
 function Settings:Hide()
     if self.frame then self.frame:Hide() end
+end
+
+function Settings:HideAuxiliaryFrames()
     if self.markerFrame then self.markerFrame:Hide() end
     if self.disabledQuestFrame then self.disabledQuestFrame:Hide() end
 end
@@ -413,6 +416,8 @@ function Settings:Initialize()
     frame:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background", edgeFile="Interface\\DialogFrame\\UI-DialogBox-Border", tile=true, tileSize=32, edgeSize=32, insets={left=11,right=12,top=12,bottom=11}})
     frame:SetScript("OnDragStart", function() this:StartMoving() end)
     frame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+    frame:SetScript("OnHide", function() Settings:HideAuxiliaryFrames() end)
+    if type(UISpecialFrames) == "table" then table.insert(UISpecialFrames, "QuestBeaconSettingsFrame") end
     self:CreateLabel(frame, "QuestBeacon Settings", 30, -22, 16)
     local close = self:CreateButton(frame, "X", 590, -17, 25, function() Settings:Hide() end)
 

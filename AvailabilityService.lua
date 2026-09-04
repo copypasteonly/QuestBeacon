@@ -10,7 +10,7 @@ Availability.questSignature = nil
 Availability.initialized = false
 Availability.serverCompleted = {}
 Availability.completionQueryIssued = false
-Availability.turtleSync = nil
+Availability.serverSync = nil
 Availability.starterOffers = {}
 Availability.stats = {scanned=0, available=0, publishes=0, lastAreaID=0, lastError=nil,
     completionQueryStatus="not requested", serverCompleted=0, verifiedNPCs=0}
@@ -65,15 +65,15 @@ end
 function Availability:GetRevision() return self.revision end
 function Availability:GetStats() return self.stats end
 
-function Availability:ScheduleTurtleSync(status)
+function Availability:ScheduleServerSync(status)
     if type(SendChatMessage) ~= "function" then
         self.stats.completionQueryStatus = status or "unsupported"
         return false
     end
     local now = type(GetTime) == "function" and GetTime() or 0
     self.nativeQueryDeadline = nil
-    self.turtleSync = {sendAt=now + 2, incoming={}, receivedPackets=0}
-    self.stats.completionQueryStatus = "turtle scheduled"
+    self.serverSync = {sendAt=now + 2, incoming={}, receivedPackets=0}
+    self.stats.completionQueryStatus = "server scheduled"
     return true
 end
 
@@ -181,13 +181,13 @@ function Availability:RequestCompletedQuestSync()
     -- Record first because compatible servers may dispatch the result synchronously.
     self.completionQueryIssued = true
     if type(QueryQuestsCompleted) ~= "function" or type(GetQuestsCompleted) ~= "function" then
-        return self:ScheduleTurtleSync("unsupported")
+        return self:ScheduleServerSync("unsupported")
     end
     self.stats.completionQueryStatus = "pending"
     self.nativeQueryDeadline = (type(GetTime) == "function" and GetTime() or 0) + 3
     local ok, queryError = pcall(QueryQuestsCompleted)
     if not ok then
-        return self:ScheduleTurtleSync("failed: " .. tostring(queryError))
+        return self:ScheduleServerSync("failed: " .. tostring(queryError))
     end
     return true
 end
@@ -195,7 +195,7 @@ end
 function Availability:RestartCompletedQuestSync()
     self.completionQueryIssued = false
     self.nativeQueryDeadline = nil
-    self.turtleSync = nil
+    self.serverSync = nil
     return self:RequestCompletedQuestSync()
 end
 
@@ -204,7 +204,7 @@ function Availability:OnCompletedQuestQuery()
     self.nativeQueryDeadline = nil
     local ok, completed = pcall(GetQuestsCompleted)
     if not ok or type(completed) ~= "table" then
-        self:ScheduleTurtleSync("invalid result")
+        self:ScheduleServerSync("invalid result")
         return false
     end
     local nextCompleted = {}
@@ -224,8 +224,8 @@ function Availability:OnCompletedQuestQuery()
     return changed
 end
 
-function Availability:OnTurtleQuestData(prefix, payload)
-    local state = self.turtleSync
+function Availability:OnServerQuestData(prefix, payload)
+    local state = self.serverSync
     if not state or not state.deadline or prefix ~= "TWQUEST" or type(payload) ~= "string" then return false end
     local received = false
     local position = 1
@@ -246,26 +246,26 @@ end
 function Availability:ProcessCompletionSync()
     if self.nativeQueryDeadline then
         local nativeNow = type(GetTime) == "function" and GetTime() or 0
-        if nativeNow >= self.nativeQueryDeadline then self:ScheduleTurtleSync("native timeout") end
+        if nativeNow >= self.nativeQueryDeadline then self:ScheduleServerSync("native timeout") end
     end
-    local state = self.turtleSync
+    local state = self.serverSync
     if not state then return false end
     local now = type(GetTime) == "function" and GetTime() or 0
     if state.sendAt and now >= state.sendAt then
         state.sendAt = nil
         state.deadline = now + 3
-        self.stats.completionQueryStatus = "turtle pending"
+        self.stats.completionQueryStatus = "server pending"
         local ok, sendError = pcall(SendChatMessage, ".queststatus", "GUILD")
         if not ok then
             self.stats.completionQueryStatus = "failed: " .. tostring(sendError)
-            self.turtleSync = nil
+            self.serverSync = nil
             return false
         end
     end
     if not state.deadline or now < state.deadline then return false end
-    self.turtleSync = nil
+    self.serverSync = nil
     if state.receivedPackets == 0 then
-        self.stats.completionQueryStatus = "turtle no response"
+        self.stats.completionQueryStatus = "server no response"
         return false
     end
     local changed = not equalSets(self.serverCompleted, state.incoming)
@@ -275,8 +275,8 @@ function Availability:ProcessCompletionSync()
     local questID
     for questID in pairs(state.incoming) do count = count + 1 end
     self.stats.serverCompleted = count
-    self.stats.completionQueryStatus = "turtle complete"
-    if changed and imported == 0 then self:Invalidate("turtle server completion") end
+    self.stats.completionQueryStatus = "server complete"
+    if changed and imported == 0 then self:Invalidate("server completion") end
     return changed or imported > 0
 end
 
