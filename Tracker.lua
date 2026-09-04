@@ -349,6 +349,16 @@ function Tracker:ApplyOpacity()
     self.frame:SetBackdropBorderColor(0.38, 0.38, 0.42, opacity)
 end
 
+function Tracker:ApplyWatchAlpha(control)
+    if not control then return end
+    local hover = tonumber(self.hoverAlpha) or 0
+    if control.watched then
+        control:SetAlpha(0.35 + 0.65 * hover)
+    else
+        control:SetAlpha(0.55 * hover)
+    end
+end
+
 function Tracker:IsMouseWithinFrame()
     if not self.frame then return false end
     if type(MouseIsOver) == "function" then return MouseIsOver(self.frame) and true or false end
@@ -364,7 +374,28 @@ end
 
 function Tracker:UpdateResizeGrip()
     if not self.resizeGrip then return end
-    if self:IsMouseWithinFrame() then self.resizeGrip:Show() else self.resizeGrip:Hide() end
+    local mouseWithin = self.resizeGripMouseWithin
+    self.resizeGripMouseWithin = nil
+    if mouseWithin == nil then mouseWithin = self:IsMouseWithinFrame() end
+    if mouseWithin then self.resizeGrip:Show() else self.resizeGrip:Hide() end
+end
+
+function Tracker:UpdateHoverFade(elapsed)
+    local mouseWithin = self:IsMouseWithinFrame()
+    local target = mouseWithin and 1 or 0
+    local current = tonumber(self.hoverAlpha) or 0
+    local step = math.min(1, math.max(0, tonumber(elapsed) or 0) * 8)
+    local nextAlpha = current + (target - current) * step
+    if math.abs(target - nextAlpha) < 0.01 then nextAlpha = target end
+    if nextAlpha ~= current then
+        self.hoverAlpha = nextAlpha
+        local index
+        for index = 1, table.getn(self.questRows) do
+            self:ApplyWatchAlpha(self.questRows[index].watch)
+        end
+    end
+    self.resizeGripMouseWithin = mouseWithin
+    self:UpdateResizeGrip()
 end
 
 function Tracker:Refresh()
@@ -387,7 +418,7 @@ function Tracker:Refresh()
         row.title.questID = quest.id row.title.text:SetText(self:QuestTitle(model))
         setFontSize(row.title.text, size + 1)
         row.watch.texture:SetVertexColor(model.watched and 0.3 or 0.6, model.watched and 1 or 0.6, model.watched and 0.3 or 0.6)
-        row.watch:SetAlpha(model.watched and 1 or 0.35)
+        self:ApplyWatchAlpha(row.watch)
         self:SetDifficultyColor(row.title.text, quest)
         row:Show() y = y - (size + 9)
         if not self:IsFolded(quest.id) then
@@ -451,7 +482,9 @@ function Tracker:Initialize()
     if self.frame then return end
     local frame = CreateFrame("Frame", "QuestBeaconTrackerFrame", UIParent)
     self.frame = frame
-    frame:SetWidth(320) frame:SetHeight(300) frame:SetFrameStrata("HIGH")
+    -- Keep Blizzard dialogs above the movable tracker so its transparent body
+    -- cannot intercept gossip or quest-option clicks when the frames overlap.
+    frame:SetWidth(320) frame:SetHeight(300) frame:SetFrameStrata("MEDIUM")
     frame:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Tooltips\\UI-Tooltip-Border", tile=true, tileSize=16, edgeSize=8, insets={left=2,right=2,top=2,bottom=2}})
     frame:SetBackdropColor(0, 0, 0, 0.68)
     frame:SetBackdropBorderColor(0.38, 0.38, 0.42, 1)
@@ -508,7 +541,7 @@ function Tracker:Initialize()
     end)
     frame:SetScript("OnUpdate", function()
         QuestBeacon.WatchService:HideNativeTracker()
-        Tracker:UpdateResizeGrip()
+        Tracker:UpdateHoverFade(arg1)
     end)
     frame:SetScript("OnSizeChanged", function() Tracker:UpdateContentWidth() end)
     self:ApplyPosition()
