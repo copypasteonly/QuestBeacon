@@ -3,14 +3,14 @@ local Config = QuestBeacon.Config
 
 Config.listeners = {}
 Config.defaults = {
-    configVersion = 4,
+    configVersion = 5,
     point = "CENTER", x = 0, y = -100, scale = 1, shown = true,
     trackingMode = "auto", arrowFontSize = 12,
     trackerShown = true, trackerLocked = false, trackerFontSize = 12,
     trackerPoint = "TOPRIGHT", trackerX = -30, trackerY = -180,
     trackerWidth = 320, trackerHeight = 300,
     trackerOpacity = 68,
-    questSort = "distance", watchedQuests = {}, watchOverrides = {},
+    questSort = "distance", watchedQuests = {}, watchOverrides = {}, disabledMapQuests = {},
     trackerView = "all", replaceNativeTracker = true,
     trackerShowLevels = true, trackerExpandObjectives = false,
     trackerFolds = {},
@@ -88,6 +88,16 @@ function Config:Initialize()
         QuestBeaconSettings.availability.highLevel = nil
         QuestBeaconSettings.configVersion = 4
     end
+    if (tonumber(QuestBeaconSettings.configVersion) or 0) < 5 then
+        local normalized = {}
+        local questID, disabled
+        for questID, disabled in pairs(QuestBeaconSettings.disabledMapQuests or {}) do
+            local id = tonumber(questID)
+            if disabled and id and id > 0 and math.floor(id) == id then normalized[id] = true end
+        end
+        QuestBeaconSettings.disabledMapQuests = normalized
+        QuestBeaconSettings.configVersion = 5
+    end
     fill(QuestBeaconSettings, self.defaults)
     QuestBeaconSettings.arrowFontSize = math.max(8, math.min(24, tonumber(QuestBeaconSettings.arrowFontSize) or 12))
     QuestBeaconSettings.trackerFontSize = math.max(8, math.min(20, tonumber(QuestBeaconSettings.trackerFontSize) or 12))
@@ -148,10 +158,12 @@ function Config:ResetUI()
     local trackingMode = QuestBeaconSettings and QuestBeaconSettings.trackingMode
     local watchedQuests = QuestBeaconSettings and QuestBeaconSettings.watchedQuests or {}
     local watchOverrides = QuestBeaconSettings and QuestBeaconSettings.watchOverrides or {}
+    local disabledMapQuests = QuestBeaconSettings and QuestBeaconSettings.disabledMapQuests or {}
     QuestBeaconSettings = copy(self.defaults)
     QuestBeaconSettings.trackingMode = trackingMode == "quest" and "quest" or "auto"
     QuestBeaconSettings.watchedQuests = watchedQuests
     QuestBeaconSettings.watchOverrides = watchOverrides
+    QuestBeaconSettings.disabledMapQuests = disabledMapQuests
     self:Notify("reset", true)
 end
 

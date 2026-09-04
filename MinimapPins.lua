@@ -101,7 +101,9 @@ function Renderer:GetPin(index)
     frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
     frame:SetScript("OnClick", function()
-        if this.pin and this.pin.role ~= "service" and this.pin.role ~= "available" then
+        if this.pin and this.pin.role ~= "service" and type(IsShiftKeyDown) == "function" and IsShiftKeyDown() then
+            QuestBeacon.MapQuestVisibility:PromptForPin(this.pin)
+        elseif this.pin and this.pin.role ~= "service" and this.pin.role ~= "available" then
             QuestBeacon.PinService:SelectPin(this.pin)
         end
     end)
@@ -151,6 +153,7 @@ function Renderer:ShowTooltip(frame)
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
     if distance then GameTooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end
+    GameTooltip:AddLine("Shift-click to hide a quest", 0.7, 0.7, 0.7)
     GameTooltip:Show()
 end
 
@@ -256,6 +259,7 @@ function Renderer:Discover(player, zoomYards)
     local playerBucketX = math.floor(player.x / BUCKET_SIZE)
     local playerBucketY = math.floor(player.y / BUCKET_SIZE)
     local settings = QuestBeacon.Config:Get("minimap")
+    local disabledMapQuests = QuestBeacon.Config:Get("disabledMapQuests")
     local active = {}
     local mapBuckets = self.spatial[player.mapID]
     if mapBuckets then
@@ -269,7 +273,10 @@ function Renderer:Discover(player, zoomYards)
                         local pinIndex
                         for pinIndex = 1, table.getn(bucket) do
                             local pin = bucket[pinIndex]
-                            if pinEnabled(pin, settings) then
+                            if QuestBeacon.MapQuestVisibility then
+                                pin = QuestBeacon.MapQuestVisibility:FilterPin(pin, disabledMapQuests)
+                            end
+                            if pin and pinEnabled(pin, settings) then
                                 local deltaX = pin.x - player.x
                                 local deltaY = pin.y - player.y
                                 if deltaX * deltaX + deltaY * deltaY <= radiusSquared then table.insert(active, pin) end
@@ -384,7 +391,7 @@ function Renderer:Initialize()
     end)
     self.frame:SetScript("OnUpdate", function() Renderer:RefreshPositions() end)
     QuestBeacon.Config:RegisterListener(self, function(owner, path)
-        if string.find(path or "", "^minimap") or path == "reset" then
+        if string.find(path or "", "^minimap") or path == "disabledMapQuests" or path == "reset" then
             owner.filterRevision = owner.filterRevision + 1
             owner.planDirty = true
             owner.discoveryDirty = true

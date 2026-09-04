@@ -101,7 +101,9 @@ function Renderer:GetPin(index, pool)
         WorldMapButton:GetFrameLevel() + SERVICE_PIN_LEVEL_OFFSET) frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
     frame:SetScript("OnClick", function()
-        if this.pin and this.pin.role ~= "service" and this.pin.role ~= "available" then
+        if this.pin and this.pin.role ~= "service" and type(IsShiftKeyDown) == "function" and IsShiftKeyDown() then
+            QuestBeacon.MapQuestVisibility:PromptForPin(this.pin)
+        elseif this.pin and this.pin.role ~= "service" and this.pin.role ~= "available" then
             QuestBeacon.PinService:SelectPin(this.pin)
         end
     end)
@@ -512,6 +514,7 @@ function Renderer:ShowTooltip(frame)
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
     if distance then tooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end
+    tooltip:AddLine("Shift-click to hide a quest", 0.7, 0.7, 0.7)
     tooltip:Show()
 end
 
@@ -584,6 +587,7 @@ function Renderer:RenderPlan(area, plan, renderKey)
     local generation = self.renderGeneration
     local state = {position=1, shown=0, pins=plan.pins, area=area, key=renderKey, density={},
         settings=QuestBeacon.Config:Get("worldMap"),
+        disabledMapQuests=QuestBeacon.Config:Get("disabledMapQuests"),
         width=WorldMapButton:GetWidth(), height=WorldMapButton:GetHeight(), pool=self.stagingPool}
     self.pendingRenderKey = renderKey
     self.stats.requested = self.stats.requested + 1
@@ -594,7 +598,10 @@ function Renderer:RenderPlan(area, plan, renderKey)
             local pin = state.pins[state.position]
             state.position = state.position + 1
             count = count + 1
-            if pinEnabled(pin, state.settings) then
+            if QuestBeacon.MapQuestVisibility then
+                pin = QuestBeacon.MapQuestVisibility:FilterPin(pin, state.disabledMapQuests)
+            end
+            if pin and pinEnabled(pin, state.settings) then
                 local x, y = Renderer:Project(pin, state.area)
                 if x and y then
                     local displayPin = pin
@@ -706,7 +713,7 @@ function Renderer:Initialize()
         Renderer:EnsureCurrent()
     end)
     QuestBeacon.Config:RegisterListener(self, function(owner, path)
-        if string.find(path or "", "^worldMap") or path == "reset" then
+        if string.find(path or "", "^worldMap") or path == "disabledMapQuests" or path == "reset" then
             owner.filterRevision = owner.filterRevision + 1
             owner:EnsureCurrent()
         end

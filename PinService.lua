@@ -99,7 +99,8 @@ local function clusterPin(quest, objective, cluster, role, texture, sourceType)
         mapID=cluster.mapID, x=cluster.x, y=cluster.y, pointCount=cluster.pointCount,
         radius=cluster.radius, isNoise=cluster.isNoise, conversionStatus=cluster.conversionStatus,
         quest=quest, objective=objective, sourceType=sourceType,
-        associations={{questID=quest.id, title=quest.title, text=objective and objective.text or role}}}
+        associations={{questID=quest.id, title=quest.title, text=objective and objective.text or role,
+            quest=quest, objective=objective}}}
 end
 
 local function spawnPin(quest, objective, point, role, sourceType)
@@ -115,7 +116,8 @@ local function spawnPin(quest, objective, point, role, sourceType)
         authoredCount=point.authoredCount or 1, isSpawnPoint=true,
         colorR=red, colorG=green, colorB=blue,
         quest=quest, objective=objective, sourceType=sourceType,
-        associations={{questID=quest.id, title=quest.title, text=objective and objective.text or role}}}
+        associations={{questID=quest.id, title=quest.title, text=objective and objective.text or role,
+            quest=quest, objective=objective}}}
 end
 
 function Pins:RegisterListener(owner, callback)

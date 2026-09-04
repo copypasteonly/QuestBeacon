@@ -13,6 +13,10 @@ local function setText(font, text)
     if font then font:SetText(text) end
 end
 
+local function setButtonEnabled(button, enabled)
+    if enabled then button:Enable() else button:Disable() end
+end
+
 function Settings:CreateLabel(parent, text, x, y, size)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
@@ -108,6 +112,11 @@ function Settings:Refresh()
     end
     refreshServiceToggle(self.worldServiceToggle, "worldMapServices")
     refreshServiceToggle(self.minimapServiceToggle, "minimapServices")
+    if self.disabledQuestButton and QuestBeacon.MapQuestVisibility then
+        local count = table.getn(QuestBeacon.MapQuestVisibility:GetDisabledQuestIDs())
+        self.disabledQuestButton:SetText("Disabled map quests (" .. tostring(count) .. ")")
+    end
+    if self.disabledQuestFrame and self.disabledQuestFrame:IsVisible() then self:RefreshDisabledQuests() end
     self.refreshing = false
 end
 
@@ -124,17 +133,99 @@ end
 function Settings:Hide()
     if self.frame then self.frame:Hide() end
     if self.markerFrame then self.markerFrame:Hide() end
+    if self.disabledQuestFrame then self.disabledQuestFrame:Hide() end
 end
 
 function Settings:ToggleMarkerFrame()
     if not self.markerFrame then self:InitializeMarkerFrame() end
     if self.markerFrame:IsVisible() then self.markerFrame:Hide()
     else
+        if self.disabledQuestFrame then self.disabledQuestFrame:Hide() end
         self.markerFrame:ClearAllPoints()
         self.markerFrame:SetPoint("TOPLEFT", self.frame, "TOPRIGHT", 12, 0)
         self:Refresh()
         self.markerFrame:Show()
     end
+end
+
+function Settings:ToggleDisabledQuestFrame()
+    if not self.disabledQuestFrame then self:InitializeDisabledQuestFrame() end
+    if self.disabledQuestFrame:IsVisible() then
+        self.disabledQuestFrame:Hide()
+    else
+        if self.markerFrame then self.markerFrame:Hide() end
+        self.disabledQuestPage = 1
+        self.disabledQuestFrame:ClearAllPoints()
+        self.disabledQuestFrame:SetPoint("TOPLEFT", self.frame, "TOPRIGHT", 12, 0)
+        self:RefreshDisabledQuests()
+        self.disabledQuestFrame:Show()
+    end
+end
+
+function Settings:RefreshDisabledQuests()
+    local frame = self.disabledQuestFrame
+    if not frame or not QuestBeacon.MapQuestVisibility then return end
+    local ids = QuestBeacon.MapQuestVisibility:GetDisabledQuestIDs()
+    local perPage = table.getn(frame.rows)
+    local pages = math.max(1, math.ceil(table.getn(ids) / perPage))
+    self.disabledQuestPage = math.max(1, math.min(pages, self.disabledQuestPage or 1))
+    local index
+    for index = 1, perPage do
+        local questID = ids[(self.disabledQuestPage - 1) * perPage + index]
+        local row = frame.rows[index]
+        row.questID = questID row.restore.questID = questID
+        if questID then
+            row.label:SetText(QuestBeacon.MapQuestVisibility:GetQuestLabel(questID) .. "  (ID " .. tostring(questID) .. ")")
+            row:Show()
+        else
+            row:Hide()
+        end
+    end
+    frame.empty:SetText(table.getn(ids) == 0 and "No quests are hidden from the maps." or "")
+    frame.page:SetText("Page " .. tostring(self.disabledQuestPage) .. " of " .. tostring(pages))
+    setButtonEnabled(frame.previous, self.disabledQuestPage > 1)
+    setButtonEnabled(frame.next, self.disabledQuestPage < pages)
+    setButtonEnabled(frame.restoreAll, table.getn(ids) > 0)
+end
+
+function Settings:InitializeDisabledQuestFrame()
+    if self.disabledQuestFrame then return end
+    local frame = CreateFrame("Frame", "QuestBeaconDisabledMapQuestsFrame", UIParent)
+    self.disabledQuestFrame = frame
+    frame:SetWidth(540) frame:SetHeight(480)
+    frame:SetPoint("TOPLEFT", self.frame, "TOPRIGHT", 12, 0)
+    frame:SetFrameStrata("DIALOG") frame:EnableMouse(true)
+    frame:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile="Interface\\DialogFrame\\UI-DialogBox-Border", tile=true, tileSize=32,
+        edgeSize=32, insets={left=11,right=12,top=12,bottom=11}})
+    self:CreateLabel(frame, "Disabled Map Quests", 25, -22, 16)
+    self:CreateButton(frame, "X", 490, -17, 25, function() Settings.disabledQuestFrame:Hide() end)
+    frame.empty = self:CreateLabel(frame, "", 35, -72, 11)
+    frame.rows = {}
+    local index
+    for index = 1, 10 do
+        local row = CreateFrame("Frame", nil, frame)
+        row:SetWidth(470) row:SetHeight(28)
+        row:SetPoint("TOPLEFT", frame, "TOPLEFT", 35, -82 - (index - 1) * 31)
+        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.label:SetWidth(345) row.label:SetPoint("LEFT", row, "LEFT", 0, 0)
+        row.label:SetJustifyH("LEFT")
+        row.restore = self:CreateButton(row, "Restore", 365, -3, 95, function()
+            if this.questID then QuestBeacon.MapQuestVisibility:SetDisabled(this.questID, false) end
+        end)
+        frame.rows[index] = row
+    end
+    frame.previous = self:CreateButton(frame, "Previous", 35, -428, 90, function()
+        Settings.disabledQuestPage = (Settings.disabledQuestPage or 1) - 1 Settings:RefreshDisabledQuests()
+    end)
+    frame.page = self:CreateLabel(frame, "", 213, -433, 11)
+    frame.next = self:CreateButton(frame, "Next", 315, -428, 90, function()
+        Settings.disabledQuestPage = (Settings.disabledQuestPage or 1) + 1 Settings:RefreshDisabledQuests()
+    end)
+    frame.restoreAll = self:CreateButton(frame, "Restore all", 410, -428, 95, function()
+        QuestBeacon.Config:Set("disabledMapQuests", {})
+    end)
+    frame:Hide()
 end
 
 function Settings:InitializeMarkerFrame()
@@ -224,6 +315,9 @@ function Settings:Initialize()
     self:CreateCheck(frame, "Nameplates", "questMobs.nameplates", 430, -400)
     self:CreateSlider(frame, "Tracker opacity", "trackerOpacity", 0, 100, 30, -500)
     self:CreateButton(frame, "Service markers", 430, -455, 170, function() Settings:ToggleMarkerFrame() end)
+    self.disabledQuestButton = self:CreateButton(frame, "Disabled map quests (0)", 230, -545, 170, function()
+        Settings:ToggleDisabledQuestFrame()
+    end)
     self:CreateButton(frame, "Reset interface", 230, -590, 170, function()
         QuestBeacon.Config:ResetUI()
         Settings:Refresh()

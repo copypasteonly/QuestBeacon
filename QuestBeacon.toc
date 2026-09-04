@@ -16,6 +16,7 @@ AvailabilityService.lua
 WatchService.lua
 Navigation.lua
 Arrow.lua
+MapQuestVisibility.lua
 Settings.lua
 Tracker.lua
 PinService.lua
