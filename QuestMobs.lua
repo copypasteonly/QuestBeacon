@@ -197,6 +197,8 @@ local ICON_TEXTURE = "Interface\\AddOns\\QuestBeacon\\img\\complete"
 local TARGET_ICON_SIZE = 16
 local TOOLTIP_ICON_SIZE = 14
 local PLATE_ICON_SIZE = 16
+local NAME_STATUS = {unit=true, unitrev=true, name=true, nameshort=true,
+    namehealth=true, namehealthbreak=true, shortnamehealth=true}
 
 -- UnitGUID raises on a token the client does not know, unlike modern clients that
 -- return nil, so every lookup goes through pcall.
@@ -225,30 +227,47 @@ function Markers:Enabled(key)
     return QuestBeacon.Config:Get("questMobs." .. key) and true or false
 end
 
-function Markers:StyleIcon(texture, size)
+function Markers:GetNumberSetting(surface, key, fallback)
+    if not QuestBeacon.Config then return fallback end
+    return tonumber(QuestBeacon.Config:Get("questMobs." .. surface .. key)) or fallback
+end
+
+function Markers:StyleIcon(texture, size, surface)
+    size = size * self:GetNumberSetting(surface, "Scale", 100) / 100
     texture:SetTexture(ICON_TEXTURE)
     texture:SetVertexColor(1, 0.8, 0, 1)
     texture:SetWidth(size)
     texture:SetHeight(size)
 end
 
+function Markers:ResolveTargetFrame()
+    if pfUI and pfUI.uf and pfUI.uf.target then return pfUI.uf.target end
+    return type(TargetFrame) == "table" and TargetFrame or nil
+end
+
 function Markers:ResolveTargetNameRegion()
-    if self.targetNameRegion then return self.targetNameRegion end
-    local region
-    if type(TargetFrame) == "table" and TargetFrame.name then
-        region = TargetFrame.name
-    elseif type(getglobal) == "function" then
-        region = getglobal("TargetName")
+    local frame = self:ResolveTargetFrame()
+    if not frame then return nil end
+    if pfUI and pfUI.uf and frame == pfUI.uf.target then
+        local config = frame.config or {}
+        if NAME_STATUS[config.txthpleft] and frame.hpLeftText then return frame.hpLeftText end
+        if NAME_STATUS[config.txthpcenter] and frame.hpCenterText then return frame.hpCenterText end
+        if NAME_STATUS[config.txthpright] and frame.hpRightText then return frame.hpRightText end
+        if frame.hpCenterText then return frame.hpCenterText end
     end
-    self.targetNameRegion = region
-    return region
+    if frame.name then
+        return frame.name
+    elseif type(getglobal) == "function" then
+        return getglobal("TargetName")
+    end
+    return nil
 end
 
 function Markers:EnsureTooltipIcon()
     if self.tooltipIcon then return self.tooltipIcon end
     if type(GameTooltip) ~= "table" or type(GameTooltip.CreateTexture) ~= "function" then return nil end
     local icon = GameTooltip:CreateTexture(nil, "OVERLAY")
-    self:StyleIcon(icon, TOOLTIP_ICON_SIZE)
+    self:StyleIcon(icon, TOOLTIP_ICON_SIZE, "tooltip")
     icon:Hide()
     self.tooltipIcon = icon
     return icon
@@ -260,12 +279,15 @@ function Markers:ClearTooltipMarker()
 end
 
 function Markers:EnsureTargetIcon()
-    if self.targetIcon then return self.targetIcon end
-    if type(TargetFrame) ~= "table" or type(TargetFrame.CreateTexture) ~= "function" then return nil end
-    local icon = TargetFrame:CreateTexture(nil, "OVERLAY")
-    self:StyleIcon(icon, TARGET_ICON_SIZE)
+    local owner = self:ResolveTargetFrame()
+    if self.targetIcon and self.targetIconOwner == owner then return self.targetIcon end
+    if self.targetIcon then self.targetIcon:Hide() end
+    self.targetIcon = nil self.targetIconOwner = nil
+    if not owner or type(owner.CreateTexture) ~= "function" then return nil end
+    local icon = owner:CreateTexture(nil, "OVERLAY")
+    self:StyleIcon(icon, TARGET_ICON_SIZE, "target")
     icon:Hide()
-    self.targetIcon = icon
+    self.targetIcon = icon self.targetIconOwner = owner
     return icon
 end
 
@@ -273,24 +295,29 @@ end
 -- frame, so its right edge sits nowhere near the text; step out from the center by
 -- half the rendered width instead. The width changes with every name, so callers
 -- re-anchor on each update rather than once at creation.
-function Markers:AnchorIconToText(icon, region, gap)
+function Markers:AnchorIconToText(icon, region, gap, surface)
     if not region then return false end
+    local xOffset = gap + self:GetNumberSetting(surface, "XOffset", 0)
+    local yOffset = self:GetNumberSetting(surface, "YOffset", 0)
     if type(icon.ClearAllPoints) == "function" then icon:ClearAllPoints() end
     if type(region.GetJustifyH) == "function" and region:GetJustifyH() == "CENTER"
         and type(region.GetStringWidth) == "function" then
         local width = tonumber(region:GetStringWidth()) or 0
-        icon:SetPoint("LEFT", region, "CENTER", (width / 2) + gap, 0)
+        icon:SetPoint("LEFT", region, "CENTER", (width / 2) + xOffset, yOffset)
     else
-        icon:SetPoint("LEFT", region, "RIGHT", gap, 0)
+        icon:SetPoint("LEFT", region, "RIGHT", xOffset, yOffset)
     end
     return true
 end
 
 function Markers:AnchorTargetIcon(icon)
-    if self:AnchorIconToText(icon, self:ResolveTargetNameRegion(), 3) then return end
+    if self:AnchorIconToText(icon, self:ResolveTargetNameRegion(), 3, "target") then return end
     if type(icon.ClearAllPoints) == "function" then icon:ClearAllPoints() end
-    if type(TargetFrame) == "table" then
-        icon:SetPoint("TOPRIGHT", TargetFrame, "TOPRIGHT", -10, -18)
+    local frame = self:ResolveTargetFrame()
+    if frame then
+        icon:SetPoint("TOPRIGHT", frame, "TOPRIGHT",
+            -10 + self:GetNumberSetting("target", "XOffset", 0),
+            -18 + self:GetNumberSetting("target", "YOffset", 0))
     end
 end
 
@@ -308,6 +335,7 @@ function Markers:UpdateTargetFrame()
     end
     icon = self:EnsureTargetIcon()
     if not icon then return end
+    self:StyleIcon(icon, TARGET_ICON_SIZE, "target")
     self:AnchorTargetIcon(icon)
     icon:Show()
 end
@@ -326,7 +354,7 @@ function Markers:OnTooltipSetUnit()
     if self.tooltipCreatureID == creatureID then return end
     local line = type(getglobal) == "function" and getglobal("GameTooltipTextLeft1") or nil
     local icon = self:EnsureTooltipIcon()
-    if icon and self:AnchorIconToText(icon, line, 3) then icon:Show() end
+    if icon and self:AnchorIconToText(icon, line, 3, "tooltip") then icon:Show() end
     self.tooltipCreatureID = creatureID
     local index
     for index = 1, table.getn(entries) do
@@ -336,6 +364,9 @@ function Markers:OnTooltipSetUnit()
             GameTooltip:AddLine(tostring(entry.text), 0.85, 0.85, 0.85)
         end
     end
+    -- AddLine updates the tooltip's text but its dimensions are not committed
+    -- until Show runs again. pfUI skins the resulting frame bounds directly.
+    if type(GameTooltip.Show) == "function" then GameTooltip:Show() end
 end
 
 function Markers:InstallTooltipHook()
@@ -376,6 +407,7 @@ end
 -- raid icon. Taking the first FontString rather than trusting index three keeps this
 -- working when a reskin inserts a texture ahead of the name.
 function Markers:PlateNameRegion(plate)
+    if plate.nameplate and plate.nameplate.name then return plate.nameplate.name end
     if plate.questBeaconNameRegion then return plate.questBeaconNameRegion end
     local region = plate.name
     if not region and type(plate.GetRegions) == "function" then
@@ -395,12 +427,16 @@ function Markers:PlateNameRegion(plate)
 end
 
 function Markers:PlateIcon(plate)
-    if plate.questBeaconMobIcon then return plate.questBeaconMobIcon end
-    if type(plate.CreateTexture) ~= "function" then return nil end
-    local icon = plate:CreateTexture(nil, "OVERLAY")
-    self:StyleIcon(icon, PLATE_ICON_SIZE)
+    local owner = plate.nameplate or plate
+    if plate.questBeaconMobIcon and plate.questBeaconMobIconOwner == owner then
+        return plate.questBeaconMobIcon
+    end
+    if plate.questBeaconMobIcon then plate.questBeaconMobIcon:Hide() end
+    if type(owner.CreateTexture) ~= "function" then return nil end
+    local icon = owner:CreateTexture(nil, "OVERLAY")
+    self:StyleIcon(icon, PLATE_ICON_SIZE, "nameplate")
     icon:Hide()
-    plate.questBeaconMobIcon = icon
+    plate.questBeaconMobIcon = icon plate.questBeaconMobIconOwner = owner
     return icon
 end
 
@@ -410,10 +446,13 @@ function Markers:UpdatePlateIcon(token, visible)
     if not ok or not plate then return end
     local icon = self:PlateIcon(plate)
     if not icon then return end
+    self:StyleIcon(icon, PLATE_ICON_SIZE, "nameplate")
     if not visible then icon:Hide() return end
-    if not self:AnchorIconToText(icon, self:PlateNameRegion(plate), 3) then
+    if not self:AnchorIconToText(icon, self:PlateNameRegion(plate), 3, "nameplate") then
         if type(icon.ClearAllPoints) == "function" then icon:ClearAllPoints() end
-        icon:SetPoint("LEFT", plate, "RIGHT", 4, 0)
+        icon:SetPoint("LEFT", plate, "RIGHT",
+            4 + self:GetNumberSetting("nameplate", "XOffset", 0),
+            self:GetNumberSetting("nameplate", "YOffset", 0))
     end
     icon:Show()
 end
@@ -454,6 +493,11 @@ function Markers:RefreshPlates()
 end
 
 function Markers:RefreshAll()
+    if self.tooltipIcon then
+        self:StyleIcon(self.tooltipIcon, TOOLTIP_ICON_SIZE, "tooltip")
+        local line = type(getglobal) == "function" and getglobal("GameTooltipTextLeft1") or nil
+        if self.tooltipCreatureID and line then self:AnchorIconToText(self.tooltipIcon, line, 3, "tooltip") end
+    end
     self:UpdateTargetFrame()
     self:RefreshPlates()
 end

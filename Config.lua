@@ -24,7 +24,10 @@ Config.defaults = {
     minimapServices = { auctioneer=false, banker=false, battlemaster=false, flight=false,
         innkeeper=false, mailbox=false, meetingstone=false, repair=false, spirithealer=false,
         stablemaster=false, vendor=false },
-    questMobs = { target=true, tooltip=true, nameplates=true },
+    questMobs = { target=true, tooltip=true, nameplates=true,
+        targetScale=100, targetXOffset=0, targetYOffset=0,
+        tooltipScale=100, tooltipXOffset=0, tooltipYOffset=0,
+        nameplateScale=100, nameplateXOffset=0, nameplateYOffset=0 },
     availability = { lowLevel=false, event=false },
 }
 
@@ -98,12 +101,39 @@ function Config:Initialize()
         QuestBeaconSettings.disabledMapQuests = normalized
         QuestBeaconSettings.configVersion = 5
     end
+    local questMobs = QuestBeaconSettings.questMobs
+    if type(questMobs) == "table" and
+       (questMobs.scale ~= nil or questMobs.xOffset ~= nil or questMobs.yOffset ~= nil) then
+        local surfaces = {"target", "tooltip", "nameplate"}
+        local index
+        for index = 1, table.getn(surfaces) do
+            local surface = surfaces[index]
+            if questMobs[surface .. "Scale"] == nil then questMobs[surface .. "Scale"] = questMobs.scale end
+            if questMobs[surface .. "XOffset"] == nil then questMobs[surface .. "XOffset"] = questMobs.xOffset end
+            if questMobs[surface .. "YOffset"] == nil then questMobs[surface .. "YOffset"] = questMobs.yOffset end
+        end
+        questMobs.scale = nil questMobs.xOffset = nil questMobs.yOffset = nil
+    end
     fill(QuestBeaconSettings, self.defaults)
     QuestBeaconSettings.arrowFontSize = math.max(8, math.min(24, tonumber(QuestBeaconSettings.arrowFontSize) or 12))
     QuestBeaconSettings.trackerFontSize = math.max(8, math.min(20, tonumber(QuestBeaconSettings.trackerFontSize) or 12))
     QuestBeaconSettings.trackerWidth = math.max(240, math.min(600, tonumber(QuestBeaconSettings.trackerWidth) or 320))
     QuestBeaconSettings.trackerHeight = math.max(100, math.min(800, tonumber(QuestBeaconSettings.trackerHeight) or 300))
     QuestBeaconSettings.trackerOpacity = math.max(0, math.min(100, tonumber(QuestBeaconSettings.trackerOpacity) or 68))
+    local markerSurfaces = {"target", "tooltip", "nameplate"}
+    local markerIndex
+    for markerIndex = 1, table.getn(markerSurfaces) do
+        local prefix = markerSurfaces[markerIndex]
+        local scaleKey = prefix .. "Scale"
+        local xKey = prefix .. "XOffset"
+        local yKey = prefix .. "YOffset"
+        QuestBeaconSettings.questMobs[scaleKey] = math.max(50, math.min(200,
+            tonumber(QuestBeaconSettings.questMobs[scaleKey]) or 100))
+        QuestBeaconSettings.questMobs[xKey] = math.max(-50, math.min(50,
+            tonumber(QuestBeaconSettings.questMobs[xKey]) or 0))
+        QuestBeaconSettings.questMobs[yKey] = math.max(-50, math.min(50,
+            tonumber(QuestBeaconSettings.questMobs[yKey]) or 0))
+    end
     if QuestBeaconSettings.questSort ~= "level" then QuestBeaconSettings.questSort = "distance" end
     if QuestBeaconSettings.trackerView ~= "watched" and QuestBeaconSettings.trackerView ~= "zone" then
         QuestBeaconSettings.trackerView = "all"

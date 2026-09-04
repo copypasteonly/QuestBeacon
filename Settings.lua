@@ -31,16 +31,18 @@ end
 function Settings:CreateCheck(parent, label, path, x, y, iconPath)
     local button = CreateFrame("CheckButton", self:ControlName("Check"), parent, "UICheckButtonTemplate")
     button:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
-    local textOffset = 26
+    local textAnchor = button
     if iconPath then
         local icon = parent:CreateTexture(nil, "ARTWORK")
         icon:SetWidth(18) icon:SetHeight(18)
-        icon:SetPoint("TOPLEFT", parent, "TOPLEFT", x + 27, y - 3)
+        icon:SetPoint("LEFT", button, "RIGHT", 4, 0)
         icon:SetTexture(iconPath)
-        textOffset = 49
+        textAnchor = icon
         button.icon = icon
     end
-    local text = self:CreateLabel(parent, label, x + textOffset, y - 5, 11)
+    local text = self:CreateLabel(parent, label, 0, 0, 11)
+    text:ClearAllPoints()
+    text:SetPoint("LEFT", textAnchor, "RIGHT", 5, 0)
     button.path = path
     button.label = text
     button:SetScript("OnClick", function()
@@ -58,13 +60,49 @@ function Settings:CreateSlider(parent, label, path, minimum, maximum, x, y)
     slider:SetMinMaxValues(minimum, maximum)
     slider:SetValueStep(1)
     slider.path = path
-    slider.valueText = self:CreateLabel(parent, "", x + 180, y - 20, 11)
+    slider.valueText = self:CreateLabel(parent, "", 0, 0, 11)
+    slider.valueText:ClearAllPoints()
+    slider.valueText:SetPoint("LEFT", slider, "RIGHT", 12, 0)
     slider:SetScript("OnValueChanged", function()
         local value = math.floor((tonumber(arg1) or this:GetValue()) + 0.5)
         setText(this.valueText, tostring(value))
         if not Settings.refreshing then QuestBeacon.Config:Set(this.path, value) end
     end)
     table.insert(self.rows, slider)
+    return slider
+end
+
+function Settings:CreateEditableSlider(parent, label, path, minimum, maximum, x, y)
+    local slider = self:CreateSlider(parent, label, path, minimum, maximum, x, y)
+    if slider.valueText then slider.valueText:Hide() end
+    slider:SetWidth(145)
+    local edit = CreateFrame("EditBox", self:ControlName("Edit"), parent, "InputBoxTemplate")
+    edit:SetPoint("LEFT", slider, "RIGHT", 10, 0)
+    edit:SetWidth(38) edit:SetHeight(20) edit:SetAutoFocus(false)
+    edit:SetJustifyH("CENTER") edit:SetMaxLetters(5)
+    edit.path = path edit.minimum = minimum edit.maximum = maximum edit.slider = slider
+    local function commit(box)
+        if box.committing then return end
+        box.committing = true
+        local current = tonumber(QuestBeacon.Config:Get(box.path)) or box.minimum
+        local value = tonumber(box:GetText()) or current
+        value = math.floor(math.max(box.minimum, math.min(box.maximum, value)) + 0.5)
+        box:SetText(tostring(value))
+        local wasRefreshing = Settings.refreshing
+        Settings.refreshing = true
+        box.slider:SetValue(value)
+        Settings.refreshing = wasRefreshing
+        if not wasRefreshing then QuestBeacon.Config:Set(box.path, value) end
+        box.committing = nil
+    end
+    edit:SetScript("OnEnterPressed", function() commit(this) this:ClearFocus() end)
+    edit:SetScript("OnEditFocusLost", function() commit(this) end)
+    edit:SetScript("OnEscapePressed", function()
+        this:SetText(tostring(QuestBeacon.Config:Get(this.path)))
+        this:ClearFocus()
+    end)
+    slider.valueText = edit
+    slider.edit = edit
     return slider
 end
 
@@ -136,14 +174,21 @@ end
 
 function Settings:HideAuxiliaryFrames()
     if self.markerFrame then self.markerFrame:Hide() end
+    if self.questMobFrame then self.questMobFrame:Hide() end
     if self.disabledQuestFrame then self.disabledQuestFrame:Hide() end
+end
+
+function Settings:HideOtherAuxiliaryFrames(keep)
+    if keep ~= self.markerFrame and self.markerFrame then self.markerFrame:Hide() end
+    if keep ~= self.questMobFrame and self.questMobFrame then self.questMobFrame:Hide() end
+    if keep ~= self.disabledQuestFrame and self.disabledQuestFrame then self.disabledQuestFrame:Hide() end
 end
 
 function Settings:ToggleMarkerFrame()
     if not self.markerFrame then self:InitializeMarkerFrame() end
     if self.markerFrame:IsVisible() then self.markerFrame:Hide()
     else
-        if self.disabledQuestFrame then self.disabledQuestFrame:Hide() end
+        self:HideOtherAuxiliaryFrames(self.markerFrame)
         self.markerFrame:ClearAllPoints()
         self.markerFrame:SetPoint("TOPLEFT", self.frame, "TOPRIGHT", 12, 0)
         self:Refresh()
@@ -156,12 +201,51 @@ function Settings:ToggleDisabledQuestFrame()
     if self.disabledQuestFrame:IsVisible() then
         self.disabledQuestFrame:Hide()
     else
-        if self.markerFrame then self.markerFrame:Hide() end
+        self:HideOtherAuxiliaryFrames(self.disabledQuestFrame)
         self.disabledQuestPage = 1
         self.disabledQuestFrame:ClearAllPoints()
         self.disabledQuestFrame:SetPoint("TOPLEFT", self.frame, "TOPRIGHT", 12, 0)
         self:RefreshDisabledQuests()
         self.disabledQuestFrame:Show()
+    end
+end
+
+
+function Settings:InitializeQuestMobFrame()
+    if self.questMobFrame then return end
+    local frame = CreateFrame("Frame", "QuestBeaconQuestMobSettingsFrame", UIParent)
+    self.questMobFrame = frame
+    frame:SetWidth(650) frame:SetHeight(285)
+    frame:SetPoint("TOPLEFT", self.frame, "TOPRIGHT", 12, 0)
+    frame:SetFrameStrata("DIALOG") frame:EnableMouse(true)
+    frame:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile="Interface\\DialogFrame\\UI-DialogBox-Border", tile=true, tileSize=32,
+        edgeSize=32, insets={left=11,right=12,top=12,bottom=11}})
+    self:CreateLabel(frame, "Quest Mob Marker", 25, -22, 16)
+    self:CreateButton(frame, "X", 600, -17, 25, function() Settings.questMobFrame:Hide() end)
+    local surfaces = {{"Target Frame", "target", 25}, {"Tooltip", "tooltip", 230},
+        {"Nameplate", "nameplate", 435}}
+    local index
+    for index = 1, table.getn(surfaces) do
+        local surface = surfaces[index]
+        self:CreateLabel(frame, surface[1], surface[3], -62, 13)
+        self:CreateEditableSlider(frame, "Icon scale (%)", "questMobs." .. surface[2] .. "Scale", 50, 200, surface[3], -88)
+        self:CreateEditableSlider(frame, "Horizontal offset", "questMobs." .. surface[2] .. "XOffset", -50, 50, surface[3], -148)
+        self:CreateEditableSlider(frame, "Vertical offset", "questMobs." .. surface[2] .. "YOffset", -50, 50, surface[3], -208)
+    end
+    frame:Hide()
+end
+
+function Settings:ToggleQuestMobFrame()
+    if not self.questMobFrame then self:InitializeQuestMobFrame() end
+    if self.questMobFrame:IsVisible() then
+        self.questMobFrame:Hide()
+    else
+        self:HideOtherAuxiliaryFrames(self.questMobFrame)
+        self.questMobFrame:ClearAllPoints()
+        self.questMobFrame:SetPoint("TOPLEFT", self.frame, "TOPRIGHT", 12, 0)
+        self:Refresh()
+        self.questMobFrame:Show()
     end
 end
 
@@ -459,8 +543,11 @@ function Settings:Initialize()
     self:CreateCheck(frame, "Target frame", "questMobs.target", 430, -330)
     self:CreateCheck(frame, "Mouseover tooltip", "questMobs.tooltip", 430, -365)
     self:CreateCheck(frame, "Nameplates", "questMobs.nameplates", 430, -400)
+    self:CreateButton(frame, "Marker size and position", 430, -430, 170, function()
+        Settings:ToggleQuestMobFrame()
+    end)
     self:CreateSlider(frame, "Tracker opacity", "trackerOpacity", 0, 100, 30, -500)
-    self:CreateButton(frame, "Service markers", 430, -455, 170, function() Settings:ToggleMarkerFrame() end)
+    self:CreateButton(frame, "Service markers", 430, -465, 170, function() Settings:ToggleMarkerFrame() end)
     self:CreateButton(frame, "Performance diagnostics", 430, -500, 170, function()
         Settings:ToggleDiagnostics()
     end)
