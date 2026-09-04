@@ -14,8 +14,8 @@ local MIN_ZOOM = 1
 local MAX_ZOOM = 4
 local ZOOM_STEP = 0.25
 local DRAG_THRESHOLD = 3
-local SERVICE_PIN_FRAME_LEVEL = 20
-local QUEST_PIN_FRAME_LEVEL = 21
+local SERVICE_PIN_LEVEL_OFFSET = 20
+local QUEST_PIN_LEVEL_OFFSET = 100
 
 local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
@@ -97,7 +97,8 @@ function Renderer:GetPin(index, pool)
     local targetPool = pool or self.pool
     if targetPool[index] then return targetPool[index] end
     local frame = CreateFrame("Button", nil, WorldMapButton)
-    frame:SetWidth(18) frame:SetHeight(18) frame:SetFrameLevel(SERVICE_PIN_FRAME_LEVEL) frame:RegisterForClicks("LeftButtonUp")
+    frame:SetWidth(18) frame:SetHeight(18) frame:SetFrameLevel(
+        WorldMapButton:GetFrameLevel() + SERVICE_PIN_LEVEL_OFFSET) frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
     frame:SetScript("OnClick", function()
         if this.pin and this.pin.role ~= "service" and this.pin.role ~= "available" then
@@ -111,8 +112,8 @@ function Renderer:GetPin(index, pool)
 end
 
 function Renderer:GetPinFrameLevel(pin)
-    if pin and pin.role == "service" then return SERVICE_PIN_FRAME_LEVEL end
-    return QUEST_PIN_FRAME_LEVEL
+    local offset = pin and pin.role == "service" and SERVICE_PIN_LEVEL_OFFSET or QUEST_PIN_LEVEL_OFFSET
+    return WorldMapButton:GetFrameLevel() + offset
 end
 
 function Renderer:GetPinDisplaySize(pin, zoom)

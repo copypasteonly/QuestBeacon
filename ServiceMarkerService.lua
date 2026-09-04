@@ -95,8 +95,10 @@ function ServiceMarkers:GetCombinedPlan(areaID, destination, questPlan)
     local pins = {}
     local index
     local questPins = questPlan and questPlan.pins or {}
-    for index = 1, table.getn(questPins) do table.insert(pins, questPins[index]) end
+    -- Render services first as well as at a lower frame level. Some 1.12 map
+    -- overlays still favor later-created siblings when buttons overlap.
     for index = 1, table.getn(servicePlan.pins) do table.insert(pins, servicePlan.pins[index]) end
+    for index = 1, table.getn(questPins) do table.insert(pins, questPins[index]) end
     local plan = {identity=key, pins=pins}
     self.combined[destination] = {key=key, plan=plan}
     return plan
