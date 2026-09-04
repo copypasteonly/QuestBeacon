@@ -83,7 +83,7 @@ local function before(first, second)
     if first.watched ~= second.watched then return first.watched end
     if first.currentArea ~= second.currentArea then return first.currentArea end
     if QuestBeacon.Config:Get("questSort") == "level" then
-        if first.quest.level ~= second.quest.level then return first.quest.level > second.quest.level end
+        if first.quest.level ~= second.quest.level then return first.quest.level < second.quest.level end
     elseif first.distance ~= second.distance then
         return first.distance < second.distance
     end
