@@ -162,6 +162,142 @@ function Settings:ToggleDisabledQuestFrame()
     end
 end
 
+function Settings:GetDiagnosticSnapshot()
+    local database = QuestBeacon.DB and QuestBeacon.DB.GetStats and QuestBeacon.DB:GetStats() or {}
+    local navigation = QuestBeacon.Navigation and QuestBeacon.Navigation.stats or {}
+    local scheduler = QuestBeacon.Scheduler and QuestBeacon.Scheduler:GetStats() or {}
+    local pins = QuestBeacon.PinService and QuestBeacon.PinService:GetStats() or {}
+    local world = QuestBeacon.WorldMapPins and QuestBeacon.WorldMapPins:GetStats() or {}
+    local minimap = QuestBeacon.MinimapPins and QuestBeacon.MinimapPins:GetStats() or {}
+    return {
+        queries=database.queries or 0, querySeconds=database.totalQuerySeconds or 0,
+        cacheHits=database.spawnCacheHits or 0, cacheMisses=database.spawnCacheMisses or 0,
+        cacheEvictions=database.spawnCacheEvictions or 0,
+        resolves=navigation.automaticResolves or 0,
+        positionRefreshes=navigation.positionRefreshes or 0, schedulerJobs=scheduler.executed or 0,
+        planRequests=pins.requests or 0, planPublishes=pins.publishes or 0,
+        worldRenders=world.completed or 0, minimapMoves=minimap.repositions or 0,
+    }
+end
+
+function Settings:ResetDiagnostics()
+    local frame = self.diagnosticFrame
+    if not frame then return end
+    frame.baseline = self:GetDiagnosticSnapshot()
+    frame.currentFrameSeconds = 0
+    frame.maximumFrameSeconds = 0
+    frame.spikeCount = 0
+    frame.elapsedSinceRefresh = 1
+end
+
+function Settings:RefreshDiagnostics()
+    local frame = self.diagnosticFrame
+    if not frame or not frame:IsVisible() then return end
+    local baseline = frame.baseline or self:GetDiagnosticSnapshot()
+    local current = self:GetDiagnosticSnapshot()
+    local database = QuestBeacon.DB and QuestBeacon.DB.GetStats and QuestBeacon.DB:GetStats() or {}
+    local navigation = QuestBeacon.Navigation and QuestBeacon.Navigation.stats or {}
+    local scheduler = QuestBeacon.Scheduler and QuestBeacon.Scheduler:GetStats() or {}
+    local pins = QuestBeacon.PinService and QuestBeacon.PinService:GetStats() or {}
+    local world = QuestBeacon.WorldMapPins and QuestBeacon.WorldMapPins:GetStats() or {}
+    local minimap = QuestBeacon.MinimapPins and QuestBeacon.MinimapPins:GetStats() or {}
+    local activeQuests = QuestBeacon.QuestService and QuestBeacon.QuestService:GetActiveQuests() or {}
+    local worldSettings = QuestBeacon.Config:Get("worldMap") or {}
+    local minimapSettings = QuestBeacon.Config:Get("minimap") or {}
+    local lines = {
+        "Counter deltas reset here; slowest timings cover this login. A spike is 50 ms.",
+        "",
+        string.format("Quest state  active %d   candidates %d   mode %s",
+            table.getn(activeQuests), navigation.lastCandidateCount or 0,
+            tostring(QuestBeacon.Navigation and QuestBeacon.Navigation.trackingMode or "unavailable")),
+        string.format("Frame     current %.2f ms   worst %.2f ms   spikes %d",
+            (frame.currentFrameSeconds or 0) * 1000, (frame.maximumFrameSeconds or 0) * 1000,
+            frame.spikeCount or 0),
+        "",
+        string.format("Navigation  resolves +%d   last %.2f ms   slowest %.2f ms",
+            current.resolves - baseline.resolves, (navigation.lastResolveSeconds or 0) * 1000,
+            (navigation.slowestResolveSeconds or 0) * 1000),
+        string.format("Movement reranks +%d   last %.2f ms   slowest %.2f ms",
+            current.positionRefreshes - baseline.positionRefreshes,
+            (navigation.lastPositionSeconds or 0) * 1000,
+            (navigation.slowestPositionSeconds or 0) * 1000),
+        string.format("Candidates %d   spawn entities %d   spawn rows %d   maximum rows %d",
+            navigation.lastCandidateCount or 0, navigation.lastSpawnEntities or 0,
+            navigation.lastSpawnRows or 0, navigation.maximumSpawnRows or 0),
+        "",
+        string.format("Database    queries +%d   query time +%.2f ms   slowest %s %.2f ms",
+            current.queries - baseline.queries, (current.querySeconds - baseline.querySeconds) * 1000,
+            tostring(database.slowestQuery or "none"), (database.slowestQuerySeconds or 0) * 1000),
+        string.format("Spawn cache %d/%d   hits +%d   misses +%d   evictions +%d",
+            QuestBeacon.DB.spawnCacheCount or 0, QuestBeacon.DB.spawnCacheLimit or 0,
+            current.cacheHits - baseline.cacheHits, current.cacheMisses - baseline.cacheMisses,
+            current.cacheEvictions - baseline.cacheEvictions),
+        "",
+        string.format("Scheduler   jobs +%d   pending %d   worst job %s %.2f ms",
+            current.schedulerJobs - baseline.schedulerJobs,
+            QuestBeacon.Scheduler and QuestBeacon.Scheduler:PendingCount() or 0,
+            tostring(scheduler.slowestLabel or "none"), (scheduler.slowestSeconds or 0) * 1000),
+        string.format("Pin plans   requests +%d   publishes +%d   plan pins %d",
+            current.planRequests - baseline.planRequests, current.planPublishes - baseline.planPublishes,
+            pins.lastPinCount or 0),
+        string.format("World map   renders +%d   displayed pins %d   events %d",
+            current.worldRenders - baseline.worldRenders, world.lastPinCount or 0, world.received or 0),
+        string.format("Minimap     moves +%d   active pins %d   discoveries %d",
+            current.minimapMoves - baseline.minimapMoves, minimap.activeCandidates or 0,
+            minimap.discoveries or 0),
+        "",
+        string.format("Visibility  world spawns %s/clusters %s   minimap spawns %s/clusters %s",
+            worldSettings.spawnPoints and "on" or "off", worldSettings.objectiveClusters and "on" or "off",
+            minimapSettings.spawnPoints and "on" or "off", minimapSettings.objectiveClusters and "on" or "off"),
+    }
+    frame.text:SetText(table.concat(lines, "\n"))
+end
+
+function Settings:InitializeDiagnosticFrame()
+    if self.diagnosticFrame then return end
+    local frame = CreateFrame("Frame", "QuestBeaconDiagnosticFrame", UIParent)
+    self.diagnosticFrame = frame
+    frame:SetWidth(650) frame:SetHeight(450)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    frame:SetFrameStrata("DIALOG") frame:SetMovable(true) frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile="Interface\\DialogFrame\\UI-DialogBox-Border", tile=true, tileSize=32,
+        edgeSize=32, insets={left=11,right=12,top=12,bottom=11}})
+    frame:SetScript("OnDragStart", function() this:StartMoving() end)
+    frame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+    self:CreateLabel(frame, "QuestBeacon Performance Diagnostics", 25, -22, 16)
+    self:CreateButton(frame, "X", 600, -17, 25, function() Settings.diagnosticFrame:Hide() end)
+    self:CreateButton(frame, "Reset", 520, -412, 80, function() Settings:ResetDiagnostics() end)
+    frame.text = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    frame.text:SetPoint("TOPLEFT", frame, "TOPLEFT", 30, -58)
+    frame.text:SetWidth(590) frame.text:SetJustifyH("LEFT")
+    frame:SetScript("OnUpdate", function()
+        local elapsed = tonumber(arg1) or 0
+        this.currentFrameSeconds = elapsed
+        if elapsed > (this.maximumFrameSeconds or 0) then this.maximumFrameSeconds = elapsed end
+        if elapsed >= 0.05 then this.spikeCount = (this.spikeCount or 0) + 1 end
+        this.elapsedSinceRefresh = (this.elapsedSinceRefresh or 0) + elapsed
+        if this.elapsedSinceRefresh >= 0.25 then
+            this.elapsedSinceRefresh = 0
+            Settings:RefreshDiagnostics()
+        end
+    end)
+    frame:SetScript("OnShow", function() Settings:ResetDiagnostics() Settings:RefreshDiagnostics() end)
+    frame:Hide()
+end
+
+function Settings:ToggleDiagnostics()
+    if not self.diagnosticFrame then self:InitializeDiagnosticFrame() end
+    if self.diagnosticFrame:IsVisible() then self.diagnosticFrame:Hide()
+    else self.diagnosticFrame:Show() end
+end
+
+function Settings:ShowDiagnostics()
+    if not self.diagnosticFrame then self:InitializeDiagnosticFrame() end
+    if not self.diagnosticFrame:IsVisible() then self.diagnosticFrame:Show() end
+end
+
 function Settings:RefreshDisabledQuests()
     local frame = self.disabledQuestFrame
     if not frame or not QuestBeacon.MapQuestVisibility then return end
@@ -315,6 +451,9 @@ function Settings:Initialize()
     self:CreateCheck(frame, "Nameplates", "questMobs.nameplates", 430, -400)
     self:CreateSlider(frame, "Tracker opacity", "trackerOpacity", 0, 100, 30, -500)
     self:CreateButton(frame, "Service markers", 430, -455, 170, function() Settings:ToggleMarkerFrame() end)
+    self:CreateButton(frame, "Performance diagnostics", 430, -500, 170, function()
+        Settings:ToggleDiagnostics()
+    end)
     self.disabledQuestButton = self:CreateButton(frame, "Disabled map quests (0)", 230, -545, 170, function()
         Settings:ToggleDisabledQuestFrame()
     end)

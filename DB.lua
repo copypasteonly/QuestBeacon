@@ -22,6 +22,10 @@ DB.areaCache = {}
 DB.candidateAreaCache = {}
 DB.starterAreaCache = {}
 DB.serviceMarkerCache = {}
+DB.stats = {
+    queries=0, totalQuerySeconds=0, slowestQuerySeconds=0, slowestQuery="none",
+    spawnCacheHits=0, spawnCacheMisses=0, spawnCacheEvictions=0,
+}
 
 local function positiveInteger(value)
     local number = tonumber(value)
@@ -50,7 +54,22 @@ function DB:QueryRaw(sql)
     if not self.handle then
         return nil, nil, "database is not open"
     end
+    local started = type(GetTime) == "function" and GetTime() or 0
     local ok, columns, rows = pcall(HDB_QueryRaw, self.handle, sql)
+    local finished = type(GetTime) == "function" and GetTime() or started
+    local elapsed = finished - started
+    local label = "other"
+    if string.find(sql or "", "entity_spawn_points") then label = "entity spawn points"
+    elseif string.find(sql or "", "entity_clusters") then label = "entity clusters"
+    elseif string.find(sql or "", "item_sources") then label = "item sources"
+    elseif string.find(sql or "", "reference_loot_sources") then label = "reference loot"
+    elseif string.find(sql or "", "item_use_targets") then label = "item use targets" end
+    self.stats.queries = self.stats.queries + 1
+    self.stats.totalQuerySeconds = self.stats.totalQuerySeconds + elapsed
+    if elapsed > self.stats.slowestQuerySeconds then
+        self.stats.slowestQuerySeconds = elapsed
+        self.stats.slowestQuery = label
+    end
     if not ok then
         QuestBeacon:Disable("database query failed: " .. tostring(columns))
         return nil, nil, tostring(columns)
@@ -148,6 +167,7 @@ function DB:CacheSpawnResult(key, result)
             self.spawnCache[oldest] = nil
             self.spawnCacheCount = self.spawnCacheCount - 1
             self.cacheSize = self.cacheSize - 1
+            self.stats.spawnCacheEvictions = self.stats.spawnCacheEvictions + 1
         end
     end
 end
@@ -377,6 +397,10 @@ function DB:GetCacheSize()
     return self.cacheSize
 end
 
+function DB:GetStats()
+    return self.stats
+end
+
 function DB:GetQuestIDs()
     if self.questIDs then
         return self.questIDs, nil
@@ -470,7 +494,11 @@ function DB:GetEntitySpawnPointsForScope(kind, entryID, scope, scopeID)
     local cacheKey = scope .. ":" .. tostring(validatedScopeID) .. ":" ..
         tostring(validatedKind) .. ":" .. tostring(validatedID)
     local cached = self.spawnCache[cacheKey]
-    if cached then return cached.points, cached.unusableCount, nil end
+    if cached then
+        self.stats.spawnCacheHits = self.stats.spawnCacheHits + 1
+        return cached.points, cached.unusableCount, nil
+    end
+    self.stats.spawnCacheMisses = self.stats.spawnCacheMisses + 1
     local scopeClause
     if scope == "map" then
         scopeClause = "map_id=" .. validatedScopeID

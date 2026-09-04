@@ -41,6 +41,15 @@ local function positiveInteger(value)
     return number
 end
 
+local function displaySettings(path)
+    if QuestBeacon.Config and QuestBeacon.Config.Get then
+        local configured = QuestBeacon.Config:Get(path)
+        if type(configured) == "table" then return configured end
+    end
+    return {objectives=true, itemSources=true, turnIns=true, available=true,
+        spawnPoints=true, objectiveClusters=true}
+end
+
 local function areaMatches(cluster, areaID)
     return tonumber(cluster.mappedAreaID or cluster.areaID) == areaID
 end
@@ -150,11 +159,21 @@ function Pins:PlanKey(areaID, availability)
     local questRevision = QuestBeacon.QuestService.GetRevision and QuestBeacon.QuestService:GetRevision() or 0
     local historyRevision = QuestBeacon.QuestHistory.GetRevision and QuestBeacon.QuestHistory:GetRevision() or 0
     local availabilityRevision = availability and availability.revision or 0
+    local world = displaySettings("worldMap")
+    local minimap = displaySettings("minimap")
+    local displayKey = table.concat({
+        world.objectives and "1" or "0", world.itemSources and "1" or "0",
+        world.turnIns and "1" or "0", world.available and "1" or "0",
+        world.spawnPoints and "1" or "0", world.objectiveClusters and "1" or "0",
+        minimap.objectives and "1" or "0", minimap.itemSources and "1" or "0",
+        minimap.turnIns and "1" or "0", minimap.available and "1" or "0",
+        minimap.spawnPoints and "1" or "0", minimap.objectiveClusters and "1" or "0",
+    }, "")
     return table.concat({tostring(areaID), tostring(self.revision), tostring(questRevision),
-        tostring(historyRevision), tostring(availabilityRevision)}, ":")
+        tostring(historyRevision), tostring(availabilityRevision), displayKey}, ":")
 end
 
-function Pins:AddObjectivePins(result, seen, areaID, quest, objective, pendingTasks)
+function Pins:AddObjectivePins(result, seen, areaID, quest, objective, pendingTasks, display)
     if objective.complete or not objective.entryID then return end
     local sources = {}
     if objective.kind == "monster" or objective.kind == "object" then
@@ -166,7 +185,10 @@ function Pins:AddObjectivePins(result, seen, areaID, quest, objective, pendingTa
     local sourceIndex
     for sourceIndex = 1, table.getn(sources) do
         local source = sources[sourceIndex]
-        local clusters = QuestBeacon.DB:GetEntityClusters(source.kind, source.entryID)
+        local clusters = nil
+        if not display or display.clusters then
+            clusters = QuestBeacon.DB:GetEntityClusters(source.kind, source.entryID)
+        end
         if clusters then
             local clusterIndex
             for clusterIndex = 1, table.getn(clusters) do
@@ -178,7 +200,7 @@ function Pins:AddObjectivePins(result, seen, areaID, quest, objective, pendingTa
                 end
             end
         end
-        if QuestBeacon.DB.GetEntitySpawnPointsForArea then
+        if (not display or display.spawns) and QuestBeacon.DB.GetEntitySpawnPointsForArea then
             local points = QuestBeacon.DB:GetEntitySpawnPointsForArea(source.kind, source.entryID, areaID)
             if points and table.getn(points) > 0 then
                 local role = objective.kind == "item" and "itemSources" or "objectives"
@@ -251,8 +273,14 @@ end
 function Pins:RequestPlan(areaID)
     local id = positiveInteger(areaID)
     if not id then return false, "invalid area ID" end
-    QuestBeacon.AvailabilityService:RequestArea(id)
-    local availability = QuestBeacon.AvailabilityService:GetSnapshot(id)
+    local world = displaySettings("worldMap")
+    local minimap = displaySettings("minimap")
+    local includeAvailable = world.available or minimap.available
+    local availability = nil
+    if includeAvailable then
+        QuestBeacon.AvailabilityService:RequestArea(id)
+        availability = QuestBeacon.AvailabilityService:GetSnapshot(id)
+    end
     local key = self:PlanKey(id, availability)
     if self.plans[id] and self.plans[id].key == key then return true, nil end
     if self.running[id] and self.running[id].key == key then return true, nil end
@@ -261,6 +289,19 @@ function Pins:RequestPlan(areaID)
         self.stats.cancelled = self.stats.cancelled + 1
     end
     local tasks = {}
+    local objectiveDisplay = {
+        clusters=(world.objectives and world.objectiveClusters) or
+            (minimap.objectives and minimap.objectiveClusters),
+        spawns=(world.objectives and world.spawnPoints) or
+            (minimap.objectives and minimap.spawnPoints),
+    }
+    local itemDisplay = {
+        clusters=(world.itemSources and world.objectiveClusters) or
+            (minimap.itemSources and minimap.objectiveClusters),
+        spawns=(world.itemSources and world.spawnPoints) or
+            (minimap.itemSources and minimap.spawnPoints),
+    }
+    local includeTurnIns = world.turnIns or minimap.turnIns
     local quests = QuestBeacon.QuestService:GetActiveQuests()
     local activeQuestIDs = {}
     local questIndex, objectiveIndex
@@ -268,12 +309,16 @@ function Pins:RequestPlan(areaID)
         local quest = quests[questIndex]
         activeQuestIDs[quest.id] = true
         for objectiveIndex = 1, table.getn(quest.objectives) do
-            table.insert(tasks, {kind="objective", quest=quest, objective=quest.objectives[objectiveIndex]})
+            local objective = quest.objectives[objectiveIndex]
+            local display = objective.kind == "item" and itemDisplay or objectiveDisplay
+            if display.clusters or display.spawns then
+                table.insert(tasks, {kind="objective", quest=quest, objective=objective, display=display})
+            end
         end
-        table.insert(tasks, {kind="ender", quest=quest})
+        if includeTurnIns then table.insert(tasks, {kind="ender", quest=quest}) end
     end
     local serverSuppressed = 0
-    if availability then
+    if includeAvailable and availability then
         local rows = QuestBeacon.DB:GetQuestStarterClustersForArea(id)
         local rowIndex
         for rowIndex = 1, table.getn(rows or {}) do
@@ -281,7 +326,7 @@ function Pins:RequestPlan(areaID)
                 availability, rows[rowIndex].questID, rows[rowIndex].kind, rows[rowIndex].entryID)
             if not starterAvailable and source == "server suppressed" then
                 serverSuppressed = serverSuppressed + 1
-            elseif starterAvailable and not activeQuestIDs[rows[rowIndex].questID] then
+            elseif includeAvailable and starterAvailable and not activeQuestIDs[rows[rowIndex].questID] then
                 table.insert(tasks, {kind="available", row=rows[rowIndex]})
             end
         end
@@ -311,7 +356,8 @@ function Pins:RequestPlan(areaID)
                 count = 12
             elseif task.kind == "objective" then
                 state.position = state.position + 1
-                Pins:AddObjectivePins(state.pins, state.seen, id, task.quest, task.objective, state.tasks)
+                Pins:AddObjectivePins(state.pins, state.seen, id, task.quest, task.objective,
+                    state.tasks, task.display)
             elseif task.kind == "ender" then
                 state.position = state.position + 1
                 Pins:AddEnderPins(state.pins, state.seen, id, task.quest)

@@ -14,6 +14,7 @@ local MIN_ZOOM = 1
 local MAX_ZOOM = 4
 local ZOOM_STEP = 0.25
 local DRAG_THRESHOLD = 3
+local ZOOM_RENDER_DELAY = 0.15
 local SERVICE_PIN_LEVEL_OFFSET = 20
 local QUEST_PIN_LEVEL_OFFSET = 100
 
@@ -182,7 +183,17 @@ function Renderer:SetZoom(zoom, cursorX, cursorY)
     self:SetScroll(mapX - focusX / newScale, mapY - focusY / newScale)
     self:RefreshPinSizes()
     self:ApplyPlayerIndicatorSize()
-    self:EnsureCurrent()
+    -- Scaling and scrolling are immediate. Density merging is deferred until the wheel
+    -- settles so rapid zoom input does not repeatedly rebuild the entire pin plan.
+    self.renderGeneration = self.renderGeneration + 1
+    self.pendingRenderKey = nil
+    if QuestBeacon.Scheduler and QuestBeacon.Scheduler.After then
+        QuestBeacon.Scheduler:After(ZOOM_RENDER_DELAY, function()
+            Renderer:EnsureCurrent()
+        end, "world-map-zoom-refresh")
+    else
+        self:EnsureCurrent()
+    end
     return true
 end
 

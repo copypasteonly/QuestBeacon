@@ -13,6 +13,12 @@ Navigation.lastPlayerX = nil
 Navigation.lastPlayerY = nil
 Navigation.lastResolveTime = 0
 Navigation.corpseState = nil
+Navigation.spawnPointSets = {}
+Navigation.stats = {
+    automaticResolves=0, lastResolveSeconds=0, slowestResolveSeconds=0,
+    lastCandidateCount=0, lastSpawnEntities=0, lastSpawnRows=0, maximumSpawnRows=0,
+    positionRefreshes=0, lastPositionSeconds=0, slowestPositionSeconds=0,
+}
 
 local SOURCE_UNIT = 1
 local SOURCE_OBJECT = 2
@@ -317,6 +323,10 @@ end
 
 function Navigation:RankCandidatesByNearestSpawn(candidates, player, reasons)
     local cachedByEntity = {}
+    local previousPointSets = self.spawnPointSets or {}
+    local nextPointSets = {}
+    local spawnEntities = 0
+    local spawnRows = 0
     local candidateIndex
     for candidateIndex = 1, table.getn(candidates) do
         local candidate = candidates[candidateIndex]
@@ -329,29 +339,68 @@ function Navigation:RankCandidatesByNearestSpawn(candidates, player, reasons)
             if not nearestByCluster then
                 nearestByCluster = {}
                 cachedByEntity[key] = nearestByCluster
-                local points, unusableCount, queryError = QuestBeacon.DB:GetEntitySpawnPoints(
-                    candidate.kind, candidate.entryID, candidate.mapID)
+                spawnEntities = spawnEntities + 1
+                local points = previousPointSets[key]
+                local unusableCount = 0
+                local queryError = nil
+                if not points then
+                    points, unusableCount, queryError = QuestBeacon.DB:GetEntitySpawnPoints(
+                        candidate.kind, candidate.entryID, candidate.mapID)
+                end
                 if queryError then
                     increment(reasons, "database_error")
                 else
+                    nextPointSets[key] = points
+                    spawnRows = spawnRows + table.getn(points or {})
                     local pointIndex
                     for pointIndex = 1, table.getn(points or {}) do
                         local point = points[pointIndex]
                         local pointDistance = distanceSquared(player, point)
                         local current = nearestByCluster[point.clusterID]
-                        if not current or pointDistance < current.distanceSquared or
+                        if not current then
+                            current = {points={}}
+                            nearestByCluster[point.clusterID] = current
+                        end
+                        table.insert(current.points, point)
+                        if not current.spawnID or pointDistance < current.distanceSquared or
                            (pointDistance == current.distanceSquared and point.spawnID < current.spawnID) then
-                            nearestByCluster[point.clusterID] = {
-                                spawnID=point.spawnID, distanceSquared=pointDistance,
-                            }
+                            current.spawnID = point.spawnID
+                            current.distanceSquared = pointDistance
                         end
                     end
                 end
             end
             local nearest = nearestByCluster[candidate.clusterID]
-            if nearest then candidate.distanceSquared = nearest.distanceSquared end
+            if nearest then
+                candidate.distanceSquared = nearest.distanceSquared
+                candidate.navigationSpawnPoints = nearest.points
+            end
         end
     end
+    self.stats.lastSpawnEntities = spawnEntities
+    self.stats.lastSpawnRows = spawnRows
+    if spawnRows > self.stats.maximumSpawnRows then self.stats.maximumSpawnRows = spawnRows end
+    self.spawnPointSets = nextPointSets
+end
+
+function Navigation:RefreshCandidateDistances(candidates, player)
+    local candidateIndex
+    for candidateIndex = 1, table.getn(candidates or {}) do
+        local candidate = candidates[candidateIndex]
+        candidate.areaRank = areaRank(player, candidate)
+        candidate.distanceSquared = distanceSquared(player, candidate)
+        local points = candidate.navigationSpawnPoints
+        if points and table.getn(points) > 0 then
+            local nearest = nil
+            local pointIndex
+            for pointIndex = 1, table.getn(points) do
+                local pointDistance = distanceSquared(player, points[pointIndex])
+                if nearest == nil or pointDistance < nearest then nearest = pointDistance end
+            end
+            if nearest ~= nil then candidate.distanceSquared = nearest end
+        end
+    end
+    table.sort(candidates, candidateBefore)
 end
 
 function Navigation:CollectCandidates(activeQuests, player, questFilter, objectiveFilter, reasons)
@@ -447,8 +496,13 @@ function Navigation:ResolveSpawnTarget(target, player, reasons)
         (target.kind ~= QuestBeacon.DB.KIND_MONSTER and target.kind ~= QuestBeacon.DB.KIND_OBJECT) then
         return target
     end
-    local points, unusableCount, queryError = QuestBeacon.DB:GetEntitySpawnPoints(
-        target.kind, target.entryID, target.mapID)
+    local points = target.navigationSpawnPoints
+    local unusableCount = 0
+    local queryError = nil
+    if not points then
+        points, unusableCount, queryError = QuestBeacon.DB:GetEntitySpawnPoints(
+            target.kind, target.entryID, target.mapID)
+    end
     if queryError then
         if reasons then increment(reasons, "database_error") end
         return target
@@ -703,6 +757,7 @@ function Navigation:Clear()
     self.lastPlayerX = nil
     self.lastPlayerY = nil
     self.lastResolveTime = 0
+    self.spawnPointSets = {}
 end
 
 function Navigation:TargetSignature(state)
@@ -764,6 +819,7 @@ function Navigation:PrintProof(state, automatic)
 end
 
 function Navigation:AutoResolve(initial)
+    local started = type(GetTime) == "function" and GetTime() or 0
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     local state
     if self.trackingMode == "pin" and self.pinnedTarget then
@@ -795,6 +851,51 @@ function Navigation:AutoResolve(initial)
         QuestBeacon.Arrow:Refresh(state)
     end
     self.lastAutomaticSignature = signature
+    local finished = type(GetTime) == "function" and GetTime() or started
+    local elapsed = finished - started
+    self.stats.automaticResolves = self.stats.automaticResolves + 1
+    self.stats.lastResolveSeconds = elapsed
+    self.stats.lastCandidateCount = table.getn(state.candidates or {})
+    if elapsed > self.stats.slowestResolveSeconds then self.stats.slowestResolveSeconds = elapsed end
+    return state
+end
+
+function Navigation:RefreshPosition(player)
+    local started = type(GetTime) == "function" and GetTime() or 0
+    local state = self.state
+    if self.trackingMode == "pin" and self.pinnedTarget then
+        state = {available=true, player=player, target=self.pinnedTarget,
+            candidates={self.pinnedTarget}, reasons={}}
+    elseif state and state.candidates and table.getn(state.candidates) > 0 then
+        self:RefreshCandidateDistances(state.candidates, player)
+        local target = state.candidates[1]
+        if self.trackingMode == "manual" and self.manualSignature then
+            local index
+            for index = 1, table.getn(state.candidates) do
+                if self:CandidateSignature(state.candidates[index]) == self.manualSignature then
+                    target = state.candidates[index]
+                end
+            end
+        end
+        target = self:ResolveSpawnTarget(target, player, state.reasons)
+        state.player = player
+        state.target = target
+        state.available = target ~= nil
+    else
+        return self:AutoResolve(false)
+    end
+    self.state = state
+    self.lastAreaID = player.areaID
+    self.lastMapID = player.mapID
+    self.lastPlayerX = player.x
+    self.lastPlayerY = player.y
+    if QuestBeacon.Arrow then QuestBeacon.Arrow:Refresh(state) end
+    self.lastAutomaticSignature = self:TargetSignature(state)
+    local finished = type(GetTime) == "function" and GetTime() or started
+    local elapsed = finished - started
+    self.stats.positionRefreshes = self.stats.positionRefreshes + 1
+    self.stats.lastPositionSeconds = elapsed
+    if elapsed > self.stats.slowestPositionSeconds then self.stats.slowestPositionSeconds = elapsed end
     return state
 end
 
@@ -803,88 +904,25 @@ function Navigation:CheckAreaChange()
     if not player.available then
         return
     end
-    local now = type(GetTime) == "function" and GetTime() or 0
-    local refresh = self.lastAreaID == nil or self.lastAreaID ~= player.areaID or self.lastMapID ~= player.mapID
-    if not refresh and self.lastPlayerX and self.lastPlayerY then
+    local areaChanged = self.lastAreaID == nil or self.lastAreaID ~= player.areaID or self.lastMapID ~= player.mapID
+    local moved = false
+    if not areaChanged and self.lastPlayerX and self.lastPlayerY then
         local deltaX = player.x - self.lastPlayerX
         local deltaY = player.y - self.lastPlayerY
-        refresh = deltaX * deltaX + deltaY * deltaY >= MOVE_REFRESH_DISTANCE_SQUARED
+        moved = deltaX * deltaX + deltaY * deltaY >= MOVE_REFRESH_DISTANCE_SQUARED
     end
-    if not refresh and now - self.lastResolveTime >= 1 then
-        refresh = true
-    end
-    if refresh then
+    if areaChanged then
         self:AutoResolve(false)
+    elseif moved then
+        self:RefreshPosition(player)
     end
 end
 
 function Navigation:PrintStatus()
-    local ready, reason = QuestBeacon:CheckClassicAPI()
-    local hearthVersion = "unavailable"
-    if type(HDB_GetVersion) == "function" then
-        local ok, major, minor, patch = pcall(HDB_GetVersion)
-        if ok then
-            hearthVersion = tostring(major) .. "." .. tostring(minor) .. "." .. tostring(patch)
-        end
-    end
-    local metadata = QuestBeacon.DB:GetMetadata()
-    local activeQuests = QuestBeacon.QuestService:GetActiveQuests()
-    local questDiagnostics = QuestBeacon.QuestService:GetDiagnostics()
-    local player = QuestBeacon.PositionService:GetPlayerPosition()
-    QuestBeacon:Print("status: ClassicAPI=" .. (ready and "ready" or ("missing (" .. tostring(reason) .. ")")) .. " HearthDB=" .. hearthVersion)
-    if metadata then
-        QuestBeacon:Print("database schema=" .. tostring(metadata.schema_version) .. " pfQuest=" .. tostring(metadata.pfquest_commit) .. " octo=" .. tostring(metadata.pfquest_octo_commit))
+    if QuestBeacon.Settings and QuestBeacon.Settings.ShowDiagnostics then
+        QuestBeacon.Settings:ShowDiagnostics()
     else
-        QuestBeacon:Print("database unavailable: " .. tostring(QuestBeacon.disabledReason))
-    end
-    QuestBeacon:Print("active quests=" .. table.getn(activeQuests) .. " candidates=" .. table.getn(self:GetCandidates()) .. " mode=" .. tostring(self.trackingMode) .. " cache=" .. QuestBeacon.DB:GetCacheSize())
-    QuestBeacon:Print("quest log visible=" .. tostring(questDiagnostics.visibleEntries) .. " expanded=" .. tostring(questDiagnostics.expandedEntries) .. " collapsed=" .. tostring(questDiagnostics.collapsedHeaders) .. " ids=" .. tostring(questDiagnostics.resolvedQuestIDs) .. " primes=" .. tostring(questDiagnostics.primeAttempts or 0) .. " titles=" .. tostring(questDiagnostics.titleRows or 0) .. " source=" .. tostring(questDiagnostics.source or "unknown"))
-    QuestBeacon:Print("quest recovery scanned=" .. tostring(questDiagnostics.recoveryScanned or 0) .. " active=" .. tostring(questDiagnostics.recoveryActive or 0) .. " reportedQuests=" .. tostring(questDiagnostics.reportedQuests or 0))
-    QuestBeacon:Print("quest recovery running=" .. tostring(questDiagnostics.recoveryRunning and true or false) ..
-        " headerHooks=" .. tostring(questDiagnostics.hookStatus or "unknown"))
-    if QuestBeacon.Scheduler then
-        local scheduler = QuestBeacon.Scheduler:GetStats()
-        QuestBeacon:Print(string.format("scheduler pending=%d maxQueue=%d maxFrame=%.2fms slowest=%s %.2fms",
-            QuestBeacon.Scheduler:PendingCount(), scheduler.maxQueue or 0,
-            (scheduler.maxFrameSeconds or 0) * 1000, tostring(scheduler.slowestLabel or "none"),
-            (scheduler.slowestSeconds or 0) * 1000))
-    end
-    if QuestBeacon.AvailabilityService then
-        local availability = QuestBeacon.AvailabilityService:GetStats()
-        QuestBeacon:Print("availability area=" .. tostring(availability.lastAreaID or 0) ..
-            " scanned=" .. tostring(availability.scanned or 0) .. " available=" ..
-            tostring(availability.available or 0) .. " publishes=" .. tostring(availability.publishes or 0) ..
-            " serverQuery=" .. tostring(availability.completionQueryStatus or "unknown") ..
-            " serverCompleted=" .. tostring(availability.serverCompleted or 0) ..
-            " verifiedNPCs=" .. tostring(availability.verifiedNPCs or 0))
-    end
-    if QuestBeacon.PinService and QuestBeacon.PinService.GetStats then
-        local pins = QuestBeacon.PinService:GetStats()
-        QuestBeacon:Print("pin plans requested=" .. tostring(pins.requests or 0) .. " published=" ..
-            tostring(pins.publishes or 0) .. " cancelled=" .. tostring(pins.cancelled or 0) ..
-            " lastPins=" .. tostring(pins.lastPinCount or 0) ..
-            " serverSuppressed=" .. tostring(pins.lastServerSuppressed or 0))
-    end
-    if QuestBeacon.WorldMapPins and QuestBeacon.WorldMapPins.GetStats then
-        local world = QuestBeacon.WorldMapPins:GetStats()
-        QuestBeacon:Print("world map events=" .. tostring(world.received or 0) .. " skipped=" ..
-            tostring(world.skipped or 0) .. " renders=" .. tostring(world.completed or 0) ..
-            " lastPins=" .. tostring(world.lastPinCount or 0))
-    end
-    if QuestBeacon.MinimapPins and QuestBeacon.MinimapPins.GetStats then
-        local minimap = QuestBeacon.MinimapPins:GetStats()
-        QuestBeacon:Print("minimap discoveries=" .. tostring(minimap.discoveries or 0) .. " moves=" ..
-            tostring(minimap.repositions or 0) .. " buckets=" .. tostring(minimap.bucketBuilds or 0) ..
-            " active=" .. tostring(minimap.activeCandidates or 0) .. " areaChecks=" ..
-            tostring(minimap.areaChecks or 0))
-    end
-    if questDiagnostics.expansionError then
-        QuestBeacon:Print("quest header scan failed: " .. tostring(questDiagnostics.expansionError))
-    end
-    if player.available then
-        QuestBeacon:Print(string.format("player x=%.2f y=%.2f area=%d map=%d", player.x, player.y, player.areaID, player.mapID))
-    else
-        QuestBeacon:Print("player unavailable: " .. tostring(player.reason))
+        QuestBeacon:Print("performance diagnostics are unavailable")
     end
 end
 
@@ -918,6 +956,9 @@ SlashCmdList["QUESTBEACON"] = function(message)
         return
     elseif command == "settings" and QuestBeacon.Settings then
         QuestBeacon.Settings:Toggle()
+        return
+    elseif (command == "debug" or command == "diagnostics") and QuestBeacon.Settings then
+        QuestBeacon.Settings:ToggleDiagnostics()
         return
     elseif command == "auto" then
         Navigation:SetTrackingMode("auto")
