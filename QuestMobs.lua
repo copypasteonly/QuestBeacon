@@ -196,7 +196,7 @@ Markers.initialized = false
 local ICON_TEXTURE = "Interface\\AddOns\\QuestBeacon\\img\\complete"
 local TARGET_ICON_SIZE = 16
 local TOOLTIP_ICON_SIZE = 14
-local PLATE_ICON_SIZE = 12
+local PLATE_ICON_SIZE = 16
 
 -- UnitGUID raises on a token the client does not know, unlike modern clients that
 -- return nil, so every lookup goes through pcall.
