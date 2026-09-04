@@ -10,6 +10,7 @@ Availability.questSignature = nil
 Availability.initialized = false
 Availability.serverCompleted = {}
 Availability.completionQueryIssued = false
+Availability.turtleSync = nil
 Availability.starterOffers = {}
 Availability.stats = {scanned=0, available=0, publishes=0, lastAreaID=0, lastError=nil,
     completionQueryStatus="not requested", serverCompleted=0, verifiedNPCs=0}
@@ -39,15 +40,6 @@ local function equalSets(first, second)
     return true
 end
 
-local function copySet(source)
-    local result = {}
-    local key, value
-    for key, value in pairs(source or {}) do
-        if value then result[tonumber(key) or key] = true end
-    end
-    return result
-end
-
 function Availability:RegisterListener(owner, callback)
     if owner and type(callback) == "function" then
         table.insert(self.listeners, {owner=owner, callback=callback})
@@ -72,6 +64,18 @@ end
 
 function Availability:GetRevision() return self.revision end
 function Availability:GetStats() return self.stats end
+
+function Availability:ScheduleTurtleSync(status)
+    if type(SendChatMessage) ~= "function" then
+        self.stats.completionQueryStatus = status or "unsupported"
+        return false
+    end
+    local now = type(GetTime) == "function" and GetTime() or 0
+    self.nativeQueryDeadline = nil
+    self.turtleSync = {sendAt=now + 2, incoming={}, receivedPackets=0}
+    self.stats.completionQueryStatus = "turtle scheduled"
+    return true
+end
 
 function Availability:Invalidate(reason, preserveStarterOffers)
     self.revision = self.revision + 1
@@ -117,10 +121,11 @@ function Availability:CaptureContext(activeQuests)
         addProgressionID(activeQuests[index].id)
     end
     QuestBeacon.QuestHistory:Initialize()
-    local completed = copySet(QuestBeaconHistory and QuestBeaconHistory.completed)
+    -- The history can contain thousands of IDs. Scans are generation-cancelled
+    -- when it changes, so sharing the stable set avoids cloning it for each area.
+    local completed = QuestBeacon.QuestHistory:GetCompleted()
     local questID
     for questID in pairs(completed) do addProgressionID(questID) end
-    for questID in pairs(self.serverCompleted) do addProgressionID(questID) end
     local progressedPast = {}
     local progressionError = nil
     if QuestBeacon.DB and type(QuestBeacon.DB.GetProgressedPastQuestIDs) == "function" then
@@ -163,7 +168,8 @@ function Availability:IsCandidateAvailable(candidate, context)
         local index
         for index = 1, table.getn(candidate.prerequisites) do
             local prerequisiteID = candidate.prerequisites[index]
-            if context.completed[prerequisiteID] or context.serverCompleted[prerequisiteID] then satisfied = true end
+            if context.completed[prerequisiteID] or context.serverCompleted[prerequisiteID] or
+               context.progressedPast[prerequisiteID] then satisfied = true end
         end
         if not satisfied then return false end
     end
@@ -172,26 +178,33 @@ end
 
 function Availability:RequestCompletedQuestSync()
     if self.completionQueryIssued then return false end
-    if type(QueryQuestsCompleted) ~= "function" or type(GetQuestsCompleted) ~= "function" then
-        self.stats.completionQueryStatus = "unsupported"
-        return false
-    end
     -- Record first because compatible servers may dispatch the result synchronously.
     self.completionQueryIssued = true
+    if type(QueryQuestsCompleted) ~= "function" or type(GetQuestsCompleted) ~= "function" then
+        return self:ScheduleTurtleSync("unsupported")
+    end
     self.stats.completionQueryStatus = "pending"
+    self.nativeQueryDeadline = (type(GetTime) == "function" and GetTime() or 0) + 3
     local ok, queryError = pcall(QueryQuestsCompleted)
     if not ok then
-        self.stats.completionQueryStatus = "failed: " .. tostring(queryError)
-        return false
+        return self:ScheduleTurtleSync("failed: " .. tostring(queryError))
     end
     return true
 end
 
+function Availability:RestartCompletedQuestSync()
+    self.completionQueryIssued = false
+    self.nativeQueryDeadline = nil
+    self.turtleSync = nil
+    return self:RequestCompletedQuestSync()
+end
+
 function Availability:OnCompletedQuestQuery()
     if not self.completionQueryIssued or type(GetQuestsCompleted) ~= "function" then return false end
+    self.nativeQueryDeadline = nil
     local ok, completed = pcall(GetQuestsCompleted)
     if not ok or type(completed) ~= "table" then
-        self.stats.completionQueryStatus = "invalid result"
+        self:ScheduleTurtleSync("invalid result")
         return false
     end
     local nextCompleted = {}
@@ -202,12 +215,69 @@ function Availability:OnCompletedQuestQuery()
     end
     local changed = not equalSets(self.serverCompleted, nextCompleted)
     self.serverCompleted = nextCompleted
+    local imported = QuestBeacon.QuestHistory and QuestBeacon.QuestHistory:ImportCompleted(nextCompleted) or 0
     local count = 0
     for questID in pairs(nextCompleted) do count = count + 1 end
     self.stats.serverCompleted = count
     self.stats.completionQueryStatus = "complete"
-    if changed then self:Invalidate("server completion") end
+    if changed and imported == 0 then self:Invalidate("server completion") end
     return changed
+end
+
+function Availability:OnTurtleQuestData(prefix, payload)
+    local state = self.turtleSync
+    if not state or not state.deadline or prefix ~= "TWQUEST" or type(payload) ~= "string" then return false end
+    local received = false
+    local position = 1
+    while position <= string.len(payload) do
+        local wordStart, wordEnd, word = string.find(payload, "(%S+)", position)
+        if not wordStart then break end
+        local id = positiveInteger(word)
+        if id then state.incoming[id] = true received = true end
+        position = wordEnd + 1
+    end
+    if received then
+        state.receivedPackets = state.receivedPackets + 1
+        state.deadline = (type(GetTime) == "function" and GetTime() or 0) + 1
+    end
+    return received
+end
+
+function Availability:ProcessCompletionSync()
+    if self.nativeQueryDeadline then
+        local nativeNow = type(GetTime) == "function" and GetTime() or 0
+        if nativeNow >= self.nativeQueryDeadline then self:ScheduleTurtleSync("native timeout") end
+    end
+    local state = self.turtleSync
+    if not state then return false end
+    local now = type(GetTime) == "function" and GetTime() or 0
+    if state.sendAt and now >= state.sendAt then
+        state.sendAt = nil
+        state.deadline = now + 3
+        self.stats.completionQueryStatus = "turtle pending"
+        local ok, sendError = pcall(SendChatMessage, ".queststatus", "GUILD")
+        if not ok then
+            self.stats.completionQueryStatus = "failed: " .. tostring(sendError)
+            self.turtleSync = nil
+            return false
+        end
+    end
+    if not state.deadline or now < state.deadline then return false end
+    self.turtleSync = nil
+    if state.receivedPackets == 0 then
+        self.stats.completionQueryStatus = "turtle no response"
+        return false
+    end
+    local changed = not equalSets(self.serverCompleted, state.incoming)
+    self.serverCompleted = state.incoming
+    local imported = QuestBeacon.QuestHistory and QuestBeacon.QuestHistory:ImportCompleted(state.incoming) or 0
+    local count = 0
+    local questID
+    for questID in pairs(state.incoming) do count = count + 1 end
+    self.stats.serverCompleted = count
+    self.stats.completionQueryStatus = "turtle complete"
+    if changed and imported == 0 then self:Invalidate("turtle server completion") end
+    return changed or imported > 0
 end
 
 function Availability:ObserveQuestgiver()

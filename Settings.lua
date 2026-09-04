@@ -201,6 +201,7 @@ function Settings:RefreshDiagnostics()
     local pins = QuestBeacon.PinService and QuestBeacon.PinService:GetStats() or {}
     local world = QuestBeacon.WorldMapPins and QuestBeacon.WorldMapPins:GetStats() or {}
     local minimap = QuestBeacon.MinimapPins and QuestBeacon.MinimapPins:GetStats() or {}
+    local availability = QuestBeacon.AvailabilityService and QuestBeacon.AvailabilityService:GetStats() or {}
     local activeQuests = QuestBeacon.QuestService and QuestBeacon.QuestService:GetActiveQuests() or {}
     local worldSettings = QuestBeacon.Config:Get("worldMap") or {}
     local minimapSettings = QuestBeacon.Config:Get("minimap") or {}
@@ -210,6 +211,10 @@ function Settings:RefreshDiagnostics()
         string.format("Quest state  active %d   candidates %d   mode %s",
             table.getn(activeQuests), navigation.lastCandidateCount or 0,
             tostring(QuestBeacon.Navigation and QuestBeacon.Navigation.trackingMode or "unavailable")),
+        string.format("Completion   %s   saved %d   server %d",
+            tostring(availability.completionQueryStatus or "not requested"),
+            QuestBeacon.QuestHistory and QuestBeacon.QuestHistory:GetCount() or 0,
+            availability.serverCompleted or 0),
         string.format("Frame     current %.2f ms   worst %.2f ms   spikes %d",
             (frame.currentFrameSeconds or 0) * 1000, (frame.maximumFrameSeconds or 0) * 1000,
             frame.spikeCount or 0),

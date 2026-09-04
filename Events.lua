@@ -89,6 +89,7 @@ function Coordinator:ProcessFrame()
         return
     end
     local now = self:Now()
+    if QuestBeacon.AvailabilityService then QuestBeacon.AvailabilityService:ProcessCompletionSync() end
     if self:IsPlayerDeadOrGhost() and self.corpseRefreshUntil > now and self.nextCorpseRefresh <= now then
         if self:RefreshCorpseNavigation(false) then
             self.corpseRefreshUntil = 0
@@ -182,13 +183,16 @@ function Coordinator:OnEvent(eventName, first, second)
         if QuestBeacon.AvailabilityService and QuestBeacon.AvailabilityService:OnCompletedQuestQuery() then
             self:MarkQuestDirty(false)
         end
+    elseif eventName == "CHAT_MSG_ADDON" then
+        if QuestBeacon.AvailabilityService then
+            QuestBeacon.AvailabilityService:OnTurtleQuestData(first, second)
+        end
     elseif eventName == "QUEST_LOG_UPDATE" or eventName == "UNIT_QUEST_LOG_CHANGED" then
         self:MarkQuestDirty(true)
     elseif eventName == "BAG_UPDATE" then
         self:MarkQuestDirty(false)
     elseif eventName == "QUEST_TURNED_IN" then
-        if QuestBeacon.QuestHistory and QuestBeacon.QuestHistory:RecordComplete(first) then
-            if QuestBeacon.AvailabilityService then QuestBeacon.AvailabilityService:Invalidate("quest history") end
+        if QuestBeacon.QuestHistory and QuestBeacon.QuestHistory:RecordComplete(first, "turnin") then
             self:MarkQuestDirty(true)
         end
     elseif eventName == "PLAYER_LEVEL_UP" or eventName == "SKILL_LINES_CHANGED" then
@@ -226,6 +230,7 @@ frame:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
 frame:RegisterEvent("QUEST_DATA_LOAD_RESULT")
 frame:RegisterEvent("BAG_UPDATE")
 frame:RegisterEvent("QUEST_TURNED_IN")
+frame:RegisterEvent("CHAT_MSG_ADDON")
 frame:RegisterEvent("PLAYER_LEVEL_UP")
 frame:RegisterEvent("SKILL_LINES_CHANGED")
 frame:RegisterEvent("PLAYER_DEAD")

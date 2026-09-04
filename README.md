@@ -42,12 +42,14 @@ QuestBeacon disables itself with a chat message if a required API or HearthDB fu
 
 Use `/qbeacon settings` or the cog button on the tracker to configure the arrow, tracker, map pins, minimap pins, service markers, and available-quest filters.
 
-Available-quest pins are predicted from the local database until you open a questgiver. QuestBeacon then uses the server's offered quest list for that NPC and, on compatible servers, imports completed quest IDs once per login into session-only availability state.
+Available-quest pins are predicted from the local database until you open a questgiver. QuestBeacon then uses the server's offered quest list for that NPC. At login it imports completed quest IDs from compatible completion APIs or Turtle WoW's `.queststatus` service and saves them in per-character history.
 
 - Click a quest title to fold or unfold its objectives.
 - Right-click a quest title to open it in the quest log.
 - Ctrl-click a quest title to select its target and open the relevant world-map area.
 - Click an objective or a map pin to navigate to it.
+- Shift-click an available-quest pin to mark it complete, or use `/qbeacon complete <questID>`.
+- Alt-click a quest pin to hide it from both maps.
 - Scroll over the world map to zoom, then right-drag to pan around while zoomed in.
 - Shift-drag the arrow to move it, Shift-scroll to resize it, or Shift-right-click it to reset it.
 
@@ -63,6 +65,7 @@ The main slash commands are:
 /qbeacon
 /qbeacon settings
 /qbeacon status
+/qbeacon sync
 /qbeacon auto
 /qbeacon next
 /qbeacon prev
@@ -70,6 +73,8 @@ The main slash commands are:
 /qbeacon watch <questID>
 /qbeacon watch all
 /qbeacon unwatch <questID>
+/qbeacon complete <questID>
+/qbeacon incomplete <questID>
 /qbeacon watched
 /qbeacon show
 /qbeacon hide

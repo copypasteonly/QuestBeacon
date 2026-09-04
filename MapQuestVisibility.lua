@@ -85,7 +85,7 @@ function Visibility:FilterPin(pin, disabledMapQuests)
     return result
 end
 
-function Visibility:GetPinChoices(pin)
+function Visibility:GetPinChoices(pin, includeDisabled)
     local choices, seen = {}, {}
     local disabled = QuestBeacon.Config:Get("disabledMapQuests") or {}
     local associations = pin and pin.associations or {}
@@ -93,7 +93,7 @@ function Visibility:GetPinChoices(pin)
     for index = 1, table.getn(associations) do
         local association = associations[index]
         local questID = positiveInteger(association.questID)
-        if questID and not seen[questID] and not disabled[questID] then
+        if questID and not seen[questID] and (includeDisabled or not disabled[questID]) then
             seen[questID] = true
             table.insert(choices, {id=questID, title=association.title,
                 level=association.quest and association.quest.level or nil})
@@ -101,7 +101,7 @@ function Visibility:GetPinChoices(pin)
     end
     if table.getn(choices) == 0 and pin and pin.quest then
         local questID = positiveInteger(pin.quest.id)
-        if questID and not disabled[questID] then
+        if questID and (includeDisabled or not disabled[questID]) then
             table.insert(choices, {id=questID, title=pin.quest.title, level=pin.quest.level})
         end
     end
@@ -128,7 +128,7 @@ function Visibility:EnsurePrompt()
     for index = 1, self.choicesPerPage do
         local row = createButton(frame, "", 360, 24)
         row:SetPoint("TOP", frame, "TOP", 0, -82 - (index - 1) * 29)
-        row:SetScript("OnClick", function() Visibility:ShowConfirmation(this.choice) end)
+        row:SetScript("OnClick", function() Visibility:ShowConfirmation(this.choice, Visibility.pendingAction) end)
         frame.rows[index] = row
     end
     frame.previous = createButton(frame, "Previous", 90, 22)
@@ -143,7 +143,14 @@ function Visibility:EnsurePrompt()
     frame.confirm = createButton(frame, "Hide", 110, 24)
     frame.confirm:SetPoint("BOTTOM", frame, "BOTTOM", -65, 30)
     frame.confirm:SetScript("OnClick", function()
-        if Visibility.pendingChoice then Visibility:SetDisabled(Visibility.pendingChoice.id, true) end
+        if Visibility.pendingChoice then
+            if Visibility.pendingAction == "complete" and QuestBeacon.QuestHistory then
+                QuestBeacon.QuestHistory:RecordComplete(Visibility.pendingChoice.id, "manual")
+                QuestBeacon:Print("marked quest " .. tostring(Visibility.pendingChoice.id) .. " complete")
+            else
+                Visibility:SetDisabled(Visibility.pendingChoice.id, true)
+            end
+        end
         Visibility.prompt:Hide()
     end)
     frame.cancel = createButton(frame, "Cancel", 110, 24)
@@ -169,13 +176,21 @@ function Visibility:RefreshChoices()
     frame.page:SetText("Page " .. tostring(self.choicePage) .. " of " .. tostring(pages))
 end
 
-function Visibility:ShowConfirmation(choice)
+function Visibility:ShowConfirmation(choice, action)
     if not choice then return false end
     self:EnsurePrompt()
-    self.pendingChoice = choice self.pendingChoices = nil
-    self.prompt.title:SetText("Hide map quest?")
-    self.prompt.message:SetText(self:GetQuestLabel(choice.id, choice.title, choice.level) ..
-        "\n\nHide this quest from the World Map and Minimap?")
+    self.pendingChoice = choice self.pendingChoices = nil self.pendingAction = action or "hide"
+    if self.pendingAction == "complete" then
+        self.prompt.title:SetText("Mark quest complete?")
+        self.prompt.message:SetText(self:GetQuestLabel(choice.id, choice.title, choice.level) ..
+            "\n\nAdd this quest to this character's completion history?")
+        self.prompt.confirm:SetText("Complete")
+    else
+        self.prompt.title:SetText("Hide map quest?")
+        self.prompt.message:SetText(self:GetQuestLabel(choice.id, choice.title, choice.level) ..
+            "\n\nHide this quest from the World Map and Minimap?")
+        self.prompt.confirm:SetText("Hide")
+    end
     local index
     for index = 1, self.choicesPerPage do self.prompt.rows[index]:Hide() end
     self.prompt.previous:Hide() self.prompt.next:Hide() self.prompt.page:Hide()
@@ -183,14 +198,15 @@ function Visibility:ShowConfirmation(choice)
     return true
 end
 
-function Visibility:PromptForPin(pin)
+function Visibility:PromptForPin(pin, action)
     if not pin or pin.role == "service" then return false end
-    local choices = self:GetPinChoices(pin)
+    local requestedAction = action == "complete" and "complete" or "hide"
+    local choices = self:GetPinChoices(pin, requestedAction == "complete")
     if table.getn(choices) == 0 then return false end
-    if table.getn(choices) == 1 then return self:ShowConfirmation(choices[1]) end
+    if table.getn(choices) == 1 then return self:ShowConfirmation(choices[1], requestedAction) end
     self:EnsurePrompt()
-    self.pendingChoice = nil self.pendingChoices = choices self.choicePage = 1
-    self.prompt.title:SetText("Choose a quest to hide")
+    self.pendingChoice = nil self.pendingChoices = choices self.pendingAction = requestedAction self.choicePage = 1
+    self.prompt.title:SetText(requestedAction == "complete" and "Choose a completed quest" or "Choose a quest to hide")
     self.prompt.message:SetText("This marker is shared by multiple quests.")
     self.prompt.confirm:Hide() self.prompt.cancel:Show()
     self.prompt.previous:Show() self.prompt.next:Show() self.prompt.page:Show()

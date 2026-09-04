@@ -945,6 +945,13 @@ SlashCmdList["QUESTBEACON"] = function(message)
     if command == "status" then
         Navigation:PrintStatus()
         return
+    elseif command == "sync" and QuestBeacon.AvailabilityService then
+        if QuestBeacon.AvailabilityService:RestartCompletedQuestSync() then
+            QuestBeacon:Print("quest completion sync started")
+        else
+            QuestBeacon:Print("quest completion sync is unavailable")
+        end
+        return
     elseif command == "show" and QuestBeacon.Arrow then
         QuestBeacon.Arrow:Show()
         return
@@ -1006,6 +1013,24 @@ SlashCmdList["QUESTBEACON"] = function(message)
         end
         return
     end
+    local completeStart, completeEnd, completeAction, completeQuest =
+        string.find(command, "^(complete)%s+(%d+)$")
+    if not completeQuest then
+        completeStart, completeEnd, completeAction, completeQuest =
+            string.find(command, "^(incomplete)%s+(%d+)$")
+    end
+    if completeQuest and QuestBeacon.QuestHistory then
+        local questID = tonumber(completeQuest)
+        if completeAction == "complete" then
+            QuestBeacon.QuestHistory:RecordComplete(questID, "manual")
+            QuestBeacon:Print("marked quest " .. tostring(questID) .. " complete")
+        elseif QuestBeacon.QuestHistory:RemoveComplete(questID) then
+            QuestBeacon:Print("removed quest " .. tostring(questID) .. " from completion history")
+        else
+            QuestBeacon:Print("quest " .. tostring(questID) .. " was not in completion history")
+        end
+        return
+    end
     local trackStart, trackEnd, trackedQuest, trackedObjective = string.find(command, "^track%s+(%d+)%s*(%d*)$")
     if trackedQuest then
         local objective = nil
@@ -1026,7 +1051,7 @@ SlashCmdList["QUESTBEACON"] = function(message)
         if capturedID then
             questFilter = tonumber(capturedID)
         else
-            QuestBeacon:Print("usage: /qbeacon status | proof [questID] | auto | track questID [objective] | watch [questID|all] | unwatch questID | show | hide | reset | settings")
+            QuestBeacon:Print("usage: /qbeacon status | sync | proof [questID] | auto | track questID [objective] | watch [questID|all] | unwatch questID | complete questID | incomplete questID | show | hide | reset | settings")
             return
         end
     end

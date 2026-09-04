@@ -101,8 +101,10 @@ function Renderer:GetPin(index)
     frame:RegisterForClicks("LeftButtonUp")
     frame.texture = frame:CreateTexture(nil, "ARTWORK") frame.texture:SetAllPoints(frame)
     frame:SetScript("OnClick", function()
-        if this.pin and this.pin.role ~= "service" and type(IsShiftKeyDown) == "function" and IsShiftKeyDown() then
-            QuestBeacon.MapQuestVisibility:PromptForPin(this.pin)
+        if this.pin and this.pin.role == "available" and type(IsShiftKeyDown) == "function" and IsShiftKeyDown() then
+            QuestBeacon.MapQuestVisibility:PromptForPin(this.pin, "complete")
+        elseif this.pin and this.pin.role ~= "service" and type(IsAltKeyDown) == "function" and IsAltKeyDown() then
+            QuestBeacon.MapQuestVisibility:PromptForPin(this.pin, "hide")
         elseif this.pin and this.pin.role ~= "service" and this.pin.role ~= "available" then
             QuestBeacon.PinService:SelectPin(this.pin)
         end
@@ -153,7 +155,8 @@ function Renderer:ShowTooltip(frame)
     local player = QuestBeacon.PositionService:GetPlayerPosition()
     local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
     if distance then GameTooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end
-    GameTooltip:AddLine("Shift-click to hide a quest", 0.7, 0.7, 0.7)
+    if frame.pin.role == "available" then GameTooltip:AddLine("Shift-click to mark complete", 0.7, 0.7, 0.7) end
+    GameTooltip:AddLine("Alt-click to hide a quest", 0.7, 0.7, 0.7)
     GameTooltip:Show()
 end
 
