@@ -29,6 +29,20 @@ local function safeGetCVar(name)
     return nil
 end
 
+function Renderer:UsesSquareMinimap()
+    if type(GetMinimapShape) == "function" then
+        local ok, shape = pcall(GetMinimapShape)
+        if ok and type(shape) == "string" and string.lower(shape) == "square" then return true end
+    end
+    -- pfUI reparents the live Minimap when its square mask is active. Older
+    -- Vanilla clients do not expose the mask texture or GetMinimapShape.
+    if pfUI and pfUI.minimap and Minimap and type(Minimap.GetParent) == "function" then
+        local ok, parent = pcall(Minimap.GetParent, Minimap)
+        if ok and parent == pfUI.minimap then return true end
+    end
+    return false
+end
+
 local function now()
     if type(GetTime) == "function" then return GetTime() end
     return 0
@@ -300,12 +314,16 @@ function Renderer:Discover(player, zoomYards)
     self.stats.activeCandidates = table.getn(active)
 end
 
-function Renderer:RenderPin(pin, player, width, height, zoomYards, radius, cosine, sine, shown)
+function Renderer:RenderPin(pin, player, width, height, zoomYards, radius, cosine, sine, shown, squareMinimap)
     local east = (player.y - pin.y) * width / zoomYards
     local north = (pin.x - player.x) * height / zoomYards
     local x = east * cosine - north * sine
     local y = east * sine + north * cosine
-    if x * x + y * y > radius * radius then return shown end
+    if squareMinimap then
+        if math.abs(x) > width / 2 - 10 or math.abs(y) > height / 2 - 10 then return shown end
+    elseif x * x + y * y > radius * radius then
+        return shown
+    end
     shown = shown + 1
     local frame = self:GetPin(shown)
     local pinChanged = frame.pin ~= pin
@@ -346,11 +364,13 @@ function Renderer:RefreshPositions()
     end
     local currentTime = now()
     local facing = self.rotateMinimap and (player.facing or 0) or 0
+    local squareMinimap = self:UsesSquareMinimap()
     local unchanged = self.lastX == player.x and self.lastY == player.y and self.lastMapID == player.mapID and
-        self.lastFacing == facing and self.lastZoomYards == zoomYards and not discovered
+        self.lastFacing == facing and self.lastZoomYards == zoomYards and
+        self.lastSquareMinimap == squareMinimap and not discovered
     if unchanged and currentTime < (self.nextForcedRefresh or 0) then return end
     self.lastX = player.x self.lastY = player.y self.lastMapID = player.mapID
-    self.lastFacing = facing self.lastZoomYards = zoomYards
+    self.lastFacing = facing self.lastZoomYards = zoomYards self.lastSquareMinimap = squareMinimap
     self.nextForcedRefresh = currentTime + SAFETY_REFRESH_INTERVAL
     local width, height = Minimap:GetWidth(), Minimap:GetHeight()
     local radius = math.min(width, height) / 2 - 10
@@ -359,7 +379,7 @@ function Renderer:RefreshPositions()
     local index
     for index = 1, table.getn(self.activePins) do
         shown = self:RenderPin(self.activePins[index], player, width, height, zoomYards,
-            radius, cosine, sine, shown)
+            radius, cosine, sine, shown, squareMinimap)
     end
     for index = shown + 1, table.getn(self.pool) do self.pool[index]:Hide() end
     self.stats.repositions = self.stats.repositions + 1
