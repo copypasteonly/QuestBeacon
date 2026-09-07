@@ -292,6 +292,10 @@ function Settings:RefreshDiagnostics()
     local activeQuests = QuestBeacon.QuestService and QuestBeacon.QuestService:GetActiveQuests() or {}
     local worldSettings = QuestBeacon.Config:Get("worldMap") or {}
     local minimapSettings = QuestBeacon.Config:Get("minimap") or {}
+    local syncFinished = tonumber(availability.completionFinishedAt) or 0
+    local syncStarted = tonumber(availability.completionStartedAt) or 0
+    local syncElapsed = syncFinished > 0 and syncFinished - syncStarted or 0
+    local syncTrace = table.concat(availability.completionTrace or {}, " > ")
     local lines = {
         "Counter deltas reset here; slowest timings cover this login. A spike is 50 ms.",
         "",
@@ -302,6 +306,13 @@ function Settings:RefreshDiagnostics()
             tostring(availability.completionQueryStatus or "not requested"),
             QuestBeacon.QuestHistory and QuestBeacon.QuestHistory:GetCount() or 0,
             availability.serverCompleted or 0),
+        string.format("Sync        attempts %d   transport %s   packets %d   IDs %d   imported %d",
+            availability.completionAttempts or 0, tostring(availability.completionTransport or "none"),
+            availability.completionPackets or 0, availability.completionParsedIDs or 0,
+            availability.completionImported or 0),
+        string.format("Sync timing started %.1f   sent %.1f   finished %.1f   elapsed %.1f sec",
+            syncStarted, availability.completionSentAt or 0, syncFinished, syncElapsed),
+        "Sync trace  " .. (syncTrace ~= "" and syncTrace or "none"),
         string.format("Frame     current %.2f ms   worst %.2f ms   spikes %d",
             (frame.currentFrameSeconds or 0) * 1000, (frame.maximumFrameSeconds or 0) * 1000,
             frame.spikeCount or 0),
@@ -349,7 +360,7 @@ function Settings:InitializeDiagnosticFrame()
     if self.diagnosticFrame then return end
     local frame = CreateFrame("Frame", "QuestBeaconDiagnosticFrame", UIParent)
     self.diagnosticFrame = frame
-    frame:SetWidth(650) frame:SetHeight(450)
+    frame:SetWidth(650) frame:SetHeight(500)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     frame:SetFrameStrata("DIALOG") frame:SetMovable(true) frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
@@ -360,7 +371,7 @@ function Settings:InitializeDiagnosticFrame()
     frame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
     self:CreateLabel(frame, "QuestBeacon Performance Diagnostics", 25, -22, 16)
     self:CreateButton(frame, "X", 600, -17, 25, function() Settings.diagnosticFrame:Hide() end)
-    self:CreateButton(frame, "Reset", 520, -412, 80, function() Settings:ResetDiagnostics() end)
+    self:CreateButton(frame, "Reset", 520, -462, 80, function() Settings:ResetDiagnostics() end)
     frame.text = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     frame.text:SetPoint("TOPLEFT", frame, "TOPLEFT", 30, -58)
     frame.text:SetWidth(590) frame.text:SetJustifyH("LEFT")

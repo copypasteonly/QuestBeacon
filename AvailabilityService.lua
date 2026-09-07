@@ -11,9 +11,15 @@ Availability.initialized = false
 Availability.serverCompleted = {}
 Availability.completionQueryIssued = false
 Availability.serverSync = nil
+Availability.manualCompletionSync = false
 Availability.starterOffers = {}
 Availability.stats = {scanned=0, available=0, publishes=0, lastAreaID=0, lastError=nil,
-    completionQueryStatus="not requested", serverCompleted=0, verifiedNPCs=0}
+    completionQueryStatus="not requested", serverCompleted=0, verifiedNPCs=0,
+    completionAttempts=0, completionTransport="none", completionPackets=0,
+    completionParsedIDs=0, completionImported=0, completionStartedAt=0,
+    completionSentAt=0, completionFinishedAt=0, completionTrace={}}
+
+local COMPLETION_DIALOG = "QUESTBEACON_COMPLETION_SYNC"
 
 local function positiveInteger(value)
     local number = tonumber(value)
@@ -65,6 +71,43 @@ end
 function Availability:GetRevision() return self.revision end
 function Availability:GetStats() return self.stats end
 
+function Availability:TraceCompletion(phase)
+    table.insert(self.stats.completionTrace, tostring(phase))
+    while table.getn(self.stats.completionTrace) > 6 do table.remove(self.stats.completionTrace, 1) end
+end
+
+function Availability:StartCompletionDiagnostics()
+    local now = type(GetTime) == "function" and GetTime() or 0
+    self.stats.completionAttempts = self.stats.completionAttempts + 1
+    self.stats.completionTransport = "detecting"
+    self.stats.completionPackets = 0
+    self.stats.completionParsedIDs = 0
+    self.stats.completionImported = 0
+    self.stats.completionStartedAt = now
+    self.stats.completionSentAt = 0
+    self.stats.completionFinishedAt = 0
+    self.stats.completionTrace = {}
+    self:TraceCompletion("requested")
+end
+
+function Availability:FinishCompletionDiagnostics(imported)
+    self.stats.completionImported = tonumber(imported) or 0
+    self.stats.completionFinishedAt = type(GetTime) == "function" and GetTime() or 0
+end
+
+function Availability:ReportCompletionSync(message)
+    if not self.manualCompletionSync then return end
+    self.manualCompletionSync = false
+    if type(StaticPopupDialogs) == "table" and type(StaticPopup_Show) == "function" then
+        StaticPopupDialogs[COMPLETION_DIALOG] = {
+            text="%s", button1=OKAY or "Okay", timeout=0, whileDead=1, hideOnEscape=1,
+        }
+        StaticPopup_Show(COMPLETION_DIALOG, message)
+    else
+        QuestBeacon:Print(message)
+    end
+end
+
 function Availability:ScheduleServerSync(status)
     if type(SendChatMessage) ~= "function" then
         self.stats.completionQueryStatus = status or "unsupported"
@@ -72,8 +115,10 @@ function Availability:ScheduleServerSync(status)
     end
     local now = type(GetTime) == "function" and GetTime() or 0
     self.nativeQueryDeadline = nil
-    self.serverSync = {sendAt=now + 2, incoming={}, receivedPackets=0}
+    self.serverSync = {sendAt=now + 2, incoming={}, receivedPackets=0, receivedIDs=0}
     self.stats.completionQueryStatus = "server scheduled"
+    self.stats.completionTransport = ".queststatus"
+    self:TraceCompletion("fallback: " .. tostring(status or "requested"))
     return true
 end
 
@@ -180,10 +225,14 @@ function Availability:RequestCompletedQuestSync()
     if self.completionQueryIssued then return false end
     -- Record first because compatible servers may dispatch the result synchronously.
     self.completionQueryIssued = true
+    self:StartCompletionDiagnostics()
     if type(QueryQuestsCompleted) ~= "function" or type(GetQuestsCompleted) ~= "function" then
-        return self:ScheduleServerSync("unsupported")
+        return self:ScheduleServerSync("native API unavailable")
     end
     self.stats.completionQueryStatus = "pending"
+    self.stats.completionTransport = "native API"
+    self.stats.completionSentAt = type(GetTime) == "function" and GetTime() or 0
+    self:TraceCompletion("native query sent")
     self.nativeQueryDeadline = (type(GetTime) == "function" and GetTime() or 0) + 3
     local ok, queryError = pcall(QueryQuestsCompleted)
     if not ok then
@@ -196,7 +245,10 @@ function Availability:RestartCompletedQuestSync()
     self.completionQueryIssued = false
     self.nativeQueryDeadline = nil
     self.serverSync = nil
-    return self:RequestCompletedQuestSync()
+    self.manualCompletionSync = true
+    local started = self:RequestCompletedQuestSync()
+    if not started then self.manualCompletionSync = false end
+    return started
 end
 
 function Availability:OnCompletedQuestQuery()
@@ -204,6 +256,7 @@ function Availability:OnCompletedQuestQuery()
     self.nativeQueryDeadline = nil
     local ok, completed = pcall(GetQuestsCompleted)
     if not ok or type(completed) ~= "table" then
+        self:TraceCompletion("native result invalid")
         self:ScheduleServerSync("invalid result")
         return false
     end
@@ -219,8 +272,14 @@ function Availability:OnCompletedQuestQuery()
     local count = 0
     for questID in pairs(nextCompleted) do count = count + 1 end
     self.stats.serverCompleted = count
+    self.stats.completionPackets = 1
+    self.stats.completionParsedIDs = count
     self.stats.completionQueryStatus = "complete"
     if changed and imported == 0 then self:Invalidate("server completion") end
+    self:TraceCompletion("native complete")
+    self:FinishCompletionDiagnostics(imported)
+    self:ReportCompletionSync("Quest completion sync complete.\n\nSource: native API\nCompleted IDs: " ..
+        tostring(count) .. "\nNewly imported: " .. tostring(imported))
     return changed
 end
 
@@ -233,11 +292,19 @@ function Availability:OnServerQuestData(prefix, payload)
         local wordStart, wordEnd, word = string.find(payload, "(%S+)", position)
         if not wordStart then break end
         local id = positiveInteger(word)
-        if id then state.incoming[id] = true received = true end
+        if id then
+            if not state.incoming[id] then state.receivedIDs = state.receivedIDs + 1 end
+            state.incoming[id] = true
+            received = true
+        end
         position = wordEnd + 1
     end
     if received then
         state.receivedPackets = state.receivedPackets + 1
+        self.stats.completionPackets = state.receivedPackets
+        self.stats.completionParsedIDs = state.receivedIDs
+        self:TraceCompletion("packet " .. tostring(state.receivedPackets) .. ": " ..
+            tostring(state.receivedIDs) .. " IDs")
         state.deadline = (type(GetTime) == "function" and GetTime() or 0) + 1
     end
     return received
@@ -246,7 +313,10 @@ end
 function Availability:ProcessCompletionSync()
     if self.nativeQueryDeadline then
         local nativeNow = type(GetTime) == "function" and GetTime() or 0
-        if nativeNow >= self.nativeQueryDeadline then self:ScheduleServerSync("native timeout") end
+        if nativeNow >= self.nativeQueryDeadline then
+            self:TraceCompletion("native timeout")
+            self:ScheduleServerSync("native timeout")
+        end
     end
     local state = self.serverSync
     if not state then return false end
@@ -255,10 +325,16 @@ function Availability:ProcessCompletionSync()
         state.sendAt = nil
         state.deadline = now + 3
         self.stats.completionQueryStatus = "server pending"
-        local ok, sendError = pcall(SendChatMessage, ".queststatus", "GUILD")
+        self.stats.completionSentAt = now
+        self:TraceCompletion("command sent")
+        local ok, sendError = pcall(SendChatMessage, ".queststatus")
         if not ok then
             self.stats.completionQueryStatus = "failed: " .. tostring(sendError)
             self.serverSync = nil
+            self:TraceCompletion("send failed")
+            self:FinishCompletionDiagnostics(0)
+            self:ReportCompletionSync("Quest completion sync failed.\n\nTransport: .queststatus\nReason: " ..
+                tostring(sendError))
             return false
         end
     end
@@ -266,6 +342,10 @@ function Availability:ProcessCompletionSync()
     self.serverSync = nil
     if state.receivedPackets == 0 then
         self.stats.completionQueryStatus = "server no response"
+        self:TraceCompletion("no response")
+        self:FinishCompletionDiagnostics(0)
+        self:ReportCompletionSync("Quest completion sync failed.\n\nTransport: .queststatus\n" ..
+            "Packets received: 0\nReason: no response from server\n\nRun /qbeacon status for diagnostics.")
         return false
     end
     local changed = not equalSets(self.serverCompleted, state.incoming)
@@ -277,6 +357,11 @@ function Availability:ProcessCompletionSync()
     self.stats.serverCompleted = count
     self.stats.completionQueryStatus = "server complete"
     if changed and imported == 0 then self:Invalidate("server completion") end
+    self:TraceCompletion("server complete")
+    self:FinishCompletionDiagnostics(imported)
+    self:ReportCompletionSync("Quest completion sync complete.\n\nTransport: .queststatus\nPackets received: " ..
+        tostring(state.receivedPackets) .. "\nCompleted IDs: " .. tostring(count) ..
+        "\nNewly imported: " .. tostring(imported))
     return changed or imported > 0
 end
 
