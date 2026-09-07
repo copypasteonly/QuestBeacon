@@ -17,7 +17,10 @@ function History:Initialize()
     if type(QuestBeaconHistory.completed) ~= "table" then
         QuestBeaconHistory.completed = {}
     end
-    if self.completedCount == nil then
+    if self.countedCompleted ~= QuestBeaconHistory.completed then
+        -- SavedVariables replace the table after Lua files load. Count the loaded
+        -- character history, rather than retaining the pre-login empty count.
+        self.countedCompleted = QuestBeaconHistory.completed
         self.completedCount = 0
         local questID
         for questID in pairs(QuestBeaconHistory.completed) do self.completedCount = self.completedCount + 1 end
@@ -103,5 +106,3 @@ function History:GetCompleted()
     self:Initialize()
     return QuestBeaconHistory.completed
 end
-
-History:Initialize()

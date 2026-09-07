@@ -277,6 +277,84 @@ function Settings:ResetDiagnostics()
     frame.elapsedSinceRefresh = 1
 end
 
+function Settings:GetCharacterDiagnostics()
+    local race, raceID = UnitRaceBase("player")
+    local class, classID = UnitClassBase("player")
+    local level = UnitLevel("player")
+    local lines = {
+        "Character  Level " .. tostring(level or "?") .. "  |  " .. tostring(race or "Unknown") ..
+            " (" .. tostring(raceID or "?") .. ")  |  " .. tostring(class or "Unknown") ..
+            " (" .. tostring(classID or "?") .. ")",
+    }
+    local skills = {}
+    local knownNames = {}
+    local skillIDs = {171,164,333,202,182,165,186,393,197,185,129,356}
+    local index
+    if C_SpellBook and type(C_SpellBook.GetSkillLineRank) == "function" then
+        for index = 1, table.getn(skillIDs) do
+            local id = skillIDs[index]
+            local rawRank, rawMaximum = C_SpellBook.GetSkillLineRank(id)
+            local rank, maximum = tonumber(rawRank), tonumber(rawMaximum)
+            if rank and rank > 0 then
+                local name
+                if type(C_SpellBook.GetSkillLineName) == "function" then
+                    name = C_SpellBook.GetSkillLineName(id)
+                end
+                table.insert(skills, tostring(name or ("Skill " .. id)) .. " " .. rank .. "/" ..
+                    tostring(maximum or "?"))
+                if name then knownNames[name] = true end
+            end
+        end
+    end
+    table.sort(skills)
+    table.insert(lines, "Professions  " .. (table.getn(skills) > 0 and table.concat(skills, "  |  ") or "None reported"))
+    -- The native list also exposes server-specific skills. Read visible entries
+    -- without expanding the player's collapsed skill headers.
+    local otherSkills = {}
+    if type(GetNumSkillLines) == "function" and type(GetSkillLineInfo) == "function" then
+        local rawCount = GetNumSkillLines()
+        for index = 1, tonumber(rawCount) or 0 do
+            local name, header, expanded, rank, temporary, modifier, maximum = GetSkillLineInfo(index)
+            if name and not header and not knownNames[name] and tonumber(rank) then
+                table.insert(otherSkills, name .. " " .. tostring(rank) .. "/" .. tostring(maximum or "?"))
+            end
+        end
+    end
+    table.sort(otherSkills)
+    table.insert(lines, "Skills  " .. (table.getn(otherSkills) > 0 and table.concat(otherSkills, "  |  ") or
+        "No other visible skills (collapsed headers are preserved)"))
+    return lines
+end
+
+function Settings:RenderDiagnosticRows(lines)
+    local frame = self.diagnosticFrame
+    frame.rows = frame.rows or {}
+    local offset = 58
+    local index
+    for index = 1, table.getn(lines) do
+        local row = frame.rows[index]
+        if not row then
+            row = {label=frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"),
+                value=frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")}
+            row.label:SetWidth(100) row.value:SetWidth(540)
+            row.label:SetJustifyH("LEFT") row.value:SetJustifyH("LEFT")
+            row.value:SetTextColor(0.9, 0.93, 0.96)
+            frame.rows[index] = row
+        end
+        local first, last, label, value = string.find(lines[index], "^(%S+)%s+(.+)$")
+        row.label:SetText(label or "") row.value:SetText(value or lines[index])
+        row.label:ClearAllPoints() row.value:ClearAllPoints()
+        row.label:SetPoint("TOPLEFT", frame, "TOPLEFT", 28, -offset)
+        row.value:SetPoint("TOPLEFT", frame, "TOPLEFT", 140, -offset)
+        row.label:Show() row.value:Show()
+        offset = offset + math.max(14, row.value:GetStringHeight()) + 5
+    end
+    for index = table.getn(lines) + 1, table.getn(frame.rows) do
+        frame.rows[index].label:Hide() frame.rows[index].value:Hide()
+    end
+    frame:SetHeight(offset + 48)
+end
+
 function Settings:RefreshDiagnostics()
     local frame = self.diagnosticFrame
     if not frame or not frame:IsVisible() then return end
@@ -297,7 +375,7 @@ function Settings:RefreshDiagnostics()
     local syncElapsed = syncFinished > 0 and syncFinished - syncStarted or 0
     local syncTrace = table.concat(availability.completionTrace or {}, " > ")
     local lines = {
-        "Counter deltas reset here; slowest timings cover this login. A spike is 50 ms.",
+        "Counters  Deltas since reset; worst timings this login. Spike threshold: 50 ms.",
         "",
         string.format("Quest state  active %d   candidates %d   mode %s",
             table.getn(activeQuests), navigation.lastCandidateCount or 0,
@@ -353,28 +431,34 @@ function Settings:RefreshDiagnostics()
             worldSettings.spawnPoints and "on" or "off", worldSettings.objectiveClusters and "on" or "off",
             minimapSettings.spawnPoints and "on" or "off", minimapSettings.objectiveClusters and "on" or "off"),
     }
-    frame.text:SetText(table.concat(lines, "\n"))
+    local character = self:GetCharacterDiagnostics()
+    table.insert(lines, 1, character[2])
+    table.insert(lines, 1, character[1])
+    table.insert(lines, 3, character[3])
+    table.insert(lines, 4, "")
+    self:RenderDiagnosticRows(lines)
 end
 
 function Settings:InitializeDiagnosticFrame()
     if self.diagnosticFrame then return end
     local frame = CreateFrame("Frame", "QuestBeaconDiagnosticFrame", UIParent)
     self.diagnosticFrame = frame
-    frame:SetWidth(650) frame:SetHeight(500)
+    frame:SetWidth(710) frame:SetHeight(600)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     frame:SetFrameStrata("DIALOG") frame:SetMovable(true) frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetBackdrop({bgFile="Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile="Interface\\DialogFrame\\UI-DialogBox-Border", tile=true, tileSize=32,
         edgeSize=32, insets={left=11,right=12,top=12,bottom=11}})
+    frame:SetBackdropColor(0.04, 0.05, 0.07, 0.96)
     frame:SetScript("OnDragStart", function() this:StartMoving() end)
     frame:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
-    self:CreateLabel(frame, "QuestBeacon Performance Diagnostics", 25, -22, 16)
-    self:CreateButton(frame, "X", 600, -17, 25, function() Settings.diagnosticFrame:Hide() end)
-    self:CreateButton(frame, "Reset", 520, -462, 80, function() Settings:ResetDiagnostics() end)
-    frame.text = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    frame.text:SetPoint("TOPLEFT", frame, "TOPLEFT", 30, -58)
-    frame.text:SetWidth(590) frame.text:SetJustifyH("LEFT")
+    self:CreateLabel(frame, "QuestBeacon Diagnostics", 28, -22, 16)
+    self:CreateButton(frame, "X", 660, -17, 25, function() Settings.diagnosticFrame:Hide() end)
+    local reset = self:CreateButton(frame, "Reset counters", 0, 0, 120, function() Settings:ResetDiagnostics() end)
+    reset:ClearAllPoints()
+    reset:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -28, 18)
+    if type(UISpecialFrames) == "table" then table.insert(UISpecialFrames, "QuestBeaconDiagnosticFrame") end
     frame:SetScript("OnUpdate", function()
         local elapsed = tonumber(arg1) or 0
         this.currentFrameSeconds = elapsed
