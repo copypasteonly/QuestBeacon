@@ -503,6 +503,10 @@ function Renderer:ShowTooltip(frame)
         for index = 1, table.getn(associations) do
             tooltip:AddLine(tostring(associations[index].text or "Service"), 0.85, 0.85, 0.85)
         end
+        if frame.pin.category == "rares" then
+            tooltip:AddLine("Level: " .. (frame.pin.levelText or "Unknown"), 1, 0.82, 0)
+            tooltip:AddLine("Respawn: " .. (respawnText(frame.pin) or "Unknown"), 0.75, 0.85, 1)
+        end
         local player = QuestBeacon.PositionService:GetPlayerPosition()
         local distance = QuestBeacon.PositionService:Distance2D(player, frame.pin)
         if distance then tooltip:AddLine(string.format("%.1f yards", distance), 0.5, 1, 0.5) end

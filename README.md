@@ -14,6 +14,7 @@ QuestBeacon is a lightweight quest navigation addon for [OctoWoW](https://octowo
 - Quest mob indicators on the target frame, mouseover tooltips, and nameplates
 - A directional corpse arrow after death
 - Optional world-map and minimap markers for banks, vendors, repairs, travel, and other services
+- Rare mob spawn markers on both maps by default, with independent toggles under Map markers. These show known spawn locations, not live sightings.
 - Deterministic spawn clustering and item-source resolution
 - Quest completion history and configurable availability filters
 - Frame-budgeted database work to keep the 1.12 client responsive

@@ -2,6 +2,7 @@ QuestBeacon.ServiceMarkerService = QuestBeacon.ServiceMarkerService or {}
 local ServiceMarkers = QuestBeacon.ServiceMarkerService
 
 ServiceMarkers.categories = {
+    {key="rares", label="Rare Mobs"},
     {key="auctioneer", label="Auctioneer"},
     {key="banker", label="Banker"},
     {key="battlemaster", label="Battlemaster"},
@@ -63,11 +64,24 @@ function ServiceMarkers:BuildPlan(areaID, destination)
     local index
     for index = 1, table.getn(rows) do
         local row = rows[index]
+        local levelText
+        if row.levelMin and row.levelMin > 0 then
+            levelText = tostring(row.levelMin)
+            if row.levelMax and row.levelMax > row.levelMin then
+                levelText = levelText .. " - " .. tostring(row.levelMax)
+            end
+        end
         local clusterKey = tostring(row.kind) .. ":" .. tostring(row.entryID) .. ":" .. tostring(row.clusterID)
         local existing = byCluster[clusterKey]
-        local association = {title=row.name or (labels[row.category] .. " location"), text=labels[row.category]}
+        local text = row.category == "rares" and "Rare Mob - known spawn location" or labels[row.category]
+        local association = {title=row.name or (labels[row.category] .. " location"), text=text}
         if existing then
             table.insert(existing.associations, association)
+            if row.category == "rares" then
+                existing.levelText = levelText
+                existing.respawnMinimumSeconds = row.respawnMinimumSeconds
+                existing.respawnMaximumSeconds = row.respawnMaximumSeconds
+            end
             if (priority[row.category] or 99) < (priority[existing.category] or 99) then
                 existing.category = row.category
                 existing.texture = "tracking\\" .. row.category
@@ -77,7 +91,9 @@ function ServiceMarkers:BuildPlan(areaID, destination)
                 kind=row.kind, entryID=row.entryID, clusterID=row.clusterID, areaID=row.areaID,
                 mappedAreaID=row.mappedAreaID, mapID=row.mapID, x=row.x, y=row.y,
                 pointCount=row.pointCount, radius=row.radius, isNoise=row.isNoise,
-                conversionStatus=row.conversionStatus, name=row.name, associations={association}}
+                conversionStatus=row.conversionStatus, name=row.name, associations={association},
+                respawnMinimumSeconds=row.respawnMinimumSeconds, respawnMaximumSeconds=row.respawnMaximumSeconds,
+                levelText=levelText}
             byCluster[clusterKey] = pin
             table.insert(pins, pin)
         end

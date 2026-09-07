@@ -175,7 +175,7 @@ end
 local SERVICE_CATEGORIES = {
     auctioneer=true, banker=true, battlemaster=true, flight=true, innkeeper=true,
     mailbox=true, meetingstone=true, repair=true, spirithealer=true,
-    stablemaster=true, vendor=true,
+    stablemaster=true, vendor=true, rares=true,
 }
 
 function DB:GetServiceMarkersForArea(areaID, categories, faction)
@@ -200,7 +200,13 @@ function DB:GetServiceMarkersForArea(areaID, categories, faction)
     local columns, rows, queryError = self:QueryRaw(
         "SELECT s.category,s.faction,c.kind,c.entry_id,c.cluster_id,c.area_id,c.mapped_area_id," ..
         "c.map_id,c.world_x,c.world_y,c.map_x,c.map_y,c.point_count,c.radius,c.is_noise," ..
-        "c.conversion_status,e.name_en_us FROM service_markers s " ..
+        "c.conversion_status,e.name_en_us," ..
+        "CASE WHEN s.category='rares' THEN (SELECT MIN(p.respawn_seconds) FROM entity_spawn_points p " ..
+        "WHERE p.kind=c.kind AND p.entry_id=c.entry_id AND p.map_id=c.map_id AND p.cluster_id=c.cluster_id) END," ..
+        "CASE WHEN s.category='rares' THEN (SELECT MAX(p.respawn_seconds) FROM entity_spawn_points p " ..
+        "WHERE p.kind=c.kind AND p.entry_id=c.entry_id AND p.map_id=c.map_id AND p.cluster_id=c.cluster_id) END," ..
+        "e.level_min,e.level_max " ..
+        "FROM service_markers s " ..
         "JOIN entity_clusters c ON c.kind=s.source_kind AND c.entry_id=s.source_id AND c.cluster_id=s.cluster_id " ..
         "JOIN entities e ON e.kind=s.source_kind AND e.entry_id=s.source_id " ..
         "WHERE s.area_id=" .. id .. " AND s.category IN (" .. table.concat(quoted, ",") .. ") AND " ..
@@ -215,7 +221,9 @@ function DB:GetServiceMarkersForArea(areaID, categories, faction)
             mappedAreaID=nullableNumber(row[7]), mapID=tonumber(row[8]), x=tonumber(row[9]),
             y=tonumber(row[10]), mapX=tonumber(row[11]), mapY=tonumber(row[12]),
             pointCount=tonumber(row[13]), radius=tonumber(row[14]), isNoise=booleanNumber(row[15]),
-            conversionStatus=row[16], name=row[17]})
+            conversionStatus=row[16], name=row[17],
+            respawnMinimumSeconds=nullableNumber(row[18]), respawnMaximumSeconds=nullableNumber(row[19]),
+            levelMin=nullableNumber(row[20]), levelMax=nullableNumber(row[21])})
     end
     self.serviceMarkerCache[cacheKey] = results
     self.cacheSize = self.cacheSize + 1
