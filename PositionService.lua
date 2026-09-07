@@ -22,6 +22,9 @@ end
 
 function PositionService:FillPlayerMotion(result, includeFacing)
     result = result or {}
+    if type(C_PlayerInfo) ~= "table" or type(C_PlayerInfo.UnitPosition) ~= "function" then
+        return markUnavailable(result, "C_PlayerInfo.UnitPosition is unavailable")
+    end
     local posY, posX, posZ, mapID = C_PlayerInfo.UnitPosition("player")
     posY = tonumber(posY)
     posX = tonumber(posX)
@@ -35,6 +38,9 @@ function PositionService:FillPlayerMotion(result, includeFacing)
     end
     local facing = nil
     if includeFacing then
+        if type(GetPlayerFacing) ~= "function" then
+            return markUnavailable(result, "GetPlayerFacing is unavailable")
+        end
         facing = GetPlayerFacing()
         facing = tonumber(facing)
         if facing == nil then return markUnavailable(result, "player facing is unavailable") end
@@ -48,6 +54,9 @@ end
 function PositionService:GetPlayerPosition()
     local result = self:FillPlayerMotion({}, true)
     if not result.available then return result end
+    if type(C_Map) ~= "table" or type(C_Map.GetBestMapForUnit) ~= "function" then
+        return unavailable("C_Map.GetBestMapForUnit is unavailable")
+    end
     local areaID = C_Map.GetBestMapForUnit("player")
     areaID = tonumber(areaID)
     if areaID == nil or areaID <= 0 then

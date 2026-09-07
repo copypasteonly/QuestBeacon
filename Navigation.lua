@@ -968,6 +968,10 @@ function Navigation:CheckAreaChange()
 end
 
 function Navigation:PrintStatus()
+    if not QuestBeacon.enabled then
+        QuestBeacon:Print("disabled - " .. tostring(QuestBeacon.disabledReason or "not initialized"))
+        return
+    end
     if QuestBeacon.Settings and QuestBeacon.Settings.ShowDiagnostics then
         QuestBeacon.Settings:ShowDiagnostics()
     else
@@ -993,6 +997,9 @@ SlashCmdList["QUESTBEACON"] = function(message)
     local command = string.lower(trim(message))
     if command == "status" then
         Navigation:PrintStatus()
+        return
+    elseif not QuestBeacon.enabled then
+        QuestBeacon:Print("disabled - " .. tostring(QuestBeacon.disabledReason or "not initialized"))
         return
     elseif command == "sync" and QuestBeacon.AvailabilityService then
         if QuestBeacon.AvailabilityService:RestartCompletedQuestSync() then

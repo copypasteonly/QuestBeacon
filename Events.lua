@@ -135,7 +135,9 @@ function Coordinator:OnEvent(eventName, first, second)
     if eventName == "ADDON_LOADED" then
         if first == QuestBeacon.NAME then
             if QuestBeacon.Config then QuestBeacon.Config:Initialize() end
-            QuestBeacon:Initialize()
+            -- Dependency failure must stop service initialization. Several services
+            -- refresh immediately and would otherwise call the missing API anyway.
+            if not QuestBeacon:Initialize() then return end
             if QuestBeacon.QuestService then QuestBeacon.QuestService:Initialize() end
             if QuestBeacon.WatchService then QuestBeacon.WatchService:Initialize() end
             if QuestBeacon.QuestHistory then
