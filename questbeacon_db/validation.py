@@ -165,7 +165,8 @@ def validate_database(path: Path) -> ValidationResult:
                JOIN entity_clusters c ON c.kind=s.source_kind AND c.entry_id=s.source_id
                  AND c.cluster_id=s.cluster_id
                WHERE s.category NOT IN ('auctioneer','banker','battlemaster','flight','innkeeper',
-                 'mailbox','meetingstone','repair','spirithealer','stablemaster','vendor')
+                 'mailbox','meetingstone','repair','spirithealer','stablemaster','vendor','rares')
+                 OR (s.category='rares' AND (s.source_kind<>1 OR s.faction<>'AH'))
                  OR s.faction NOT IN ('A','H','AH')
                  OR c.world_x IS NULL OR c.world_y IS NULL OR c.map_id IS NULL
                  OR s.area_id <> COALESCE(c.mapped_area_id,c.area_id)"""

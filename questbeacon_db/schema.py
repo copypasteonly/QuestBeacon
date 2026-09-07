@@ -1,9 +1,9 @@
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys=ON;
 PRAGMA application_id=1363298644;
-PRAGMA user_version=8;
+PRAGMA user_version=9;
 
 CREATE TABLE maps (
   id INTEGER PRIMARY KEY,
@@ -160,7 +160,7 @@ CREATE TABLE quest_fallback_targets (
 CREATE TABLE service_markers (
   category TEXT NOT NULL CHECK (category IN (
     'auctioneer','banker','battlemaster','flight','innkeeper','mailbox',
-    'meetingstone','repair','spirithealer','stablemaster','vendor'
+    'meetingstone','repair','spirithealer','stablemaster','vendor','rares'
   )),
   faction TEXT NOT NULL CHECK (faction IN ('A','H','AH')),
   source_kind INTEGER NOT NULL CHECK (source_kind IN (1,2)),

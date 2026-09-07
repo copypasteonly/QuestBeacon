@@ -20,7 +20,7 @@ from questbeacon_db.schema import SCHEMA_SQL, SCHEMA_VERSION
 ENTITY_KIND = {"U": 1, "O": 2, "I": 3, "V": 4, "R": 5, "A": 6, "IR": 7}
 SERVICE_CATEGORIES = (
     "auctioneer", "banker", "battlemaster", "flight", "innkeeper", "mailbox",
-    "meetingstone", "repair", "spirithealer", "stablemaster", "vendor",
+    "meetingstone", "repair", "spirithealer", "stablemaster", "vendor", "rares",
 )
 
 
@@ -247,7 +247,8 @@ def _service_marker_rows(
             entry_id = int(raw_entry_id)
             kind = ENTITY_KIND["O"] if entry_id < 0 else ENTITY_KIND["U"]
             entry_id = abs(entry_id)
-            faction_value = str(raw_faction or "")
+            # Rare metadata stores levels; it does not restrict player faction.
+            faction_value = "AH" if category == "rares" else str(raw_faction or "")
             faction = ("A" if "A" in faction_value else "") + ("H" if "H" in faction_value else "")
             if not faction:
                 faction = "AH"
